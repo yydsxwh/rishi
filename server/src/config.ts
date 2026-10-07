@@ -21,7 +21,11 @@ export type DaysConfig = {
   adminSubs: string[]
   configEncryptionKey: string
   accountDirectoryUrl: string
+  accountResolveUrl: string
   accountInternalToken: string
+  kkchatApiUrl: string
+  kkchatServiceToken: string
+  geoUpstream: string
   firebaseProjectId: string
   firebaseClientEmail: string
   firebasePrivateKey: string
@@ -93,7 +97,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): DaysConfig {
     adminSubs: splitList(env.RISHI_ADMIN_SUBS, ''),
     configEncryptionKey: env.RISHI_CONFIG_ENCRYPTION_KEY || '',
     accountDirectoryUrl: optionalUrl(env.ACCOUNT_DIRECTORY_URL, env.ACCOUNT_ISSUER ? `${env.ACCOUNT_ISSUER.replace(/\/+$/, '')}/api/internal/directory/users` : ''),
+    accountResolveUrl: optionalUrl(env.ACCOUNT_RESOLVE_URL, env.ACCOUNT_ISSUER ? `${env.ACCOUNT_ISSUER.replace(/\/+$/, '')}/api/internal/users/resolve-identifier` : ''),
     accountInternalToken: env.ACCOUNT_INTERNAL_TOKEN || '',
+    kkchatApiUrl: optionalUrl(env.KKCHAT_API_URL, ''),
+    kkchatServiceToken: env.KKCHAT_SERVICE_TOKEN || '',
+    geoUpstream: optionalUrl(env.GEO_UPSTREAM_URL, 'https://www.yydsxwh.com'),
     firebaseProjectId: env.FIREBASE_PROJECT_ID || '',
     firebaseClientEmail: env.FIREBASE_CLIENT_EMAIL || '',
     firebasePrivateKey: (env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),

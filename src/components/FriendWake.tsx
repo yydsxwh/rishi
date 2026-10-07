@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AppStore } from '../hooks/useAppStore'
-import { daysFetch } from '../lib/days-api'
 import { loadWake, postJson, remoteAlarmStatusText, type RemoteAlarmRecord, type RemoteGrant } from '../lib/remote-alarm'
+import type { TrustedAccount } from '../lib/location'
+import TrustPersonPicker from './TrustPersonPicker'
 
 function localIso(date: string, time: string): string | null {
   if (!date || !time) return null
@@ -45,9 +46,7 @@ export default function FriendWake({ store }: { store: AppStore }) {
   const [audit, setAudit] = useState<{ id: string; at: string; summary: string }[]>([])
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [query, setQuery] = useState('')
-  const [granteeId, setGranteeId] = useState('')
-  const [granteeName, setGranteeName] = useState('')
+  const [person, setPerson] = useState<TrustedAccount | null>(null)
   const [scope, setScope] = useState<'TIME_RANGE' | 'PERMANENT' | 'ENTITY_BOUND'>('TIME_RANGE')
   const [fromDate, setFromDate] = useState('')
   const [fromTime, setFromTime] = useState('20:00')
@@ -101,9 +100,15 @@ export default function FriendWake({ store }: { store: AppStore }) {
 
   async function authorize() {
     setError('')
+    if (!person) {
+      setError('请先确认要授权的人。查找成功后还要点「确认是此人」。')
+      return
+    }
+    const granteeUserId = person.userSub
+    const granteeName = person.displayName || '好友'
     try {
       if (scope === 'PERMANENT') {
-        await postJson('/api/days/remote-alarm/grants', 'POST', { granteeUserId: granteeId, granteeName: granteeName || '好友', scope })
+        await postJson('/api/days/remote-alarm/grants', 'POST', { granteeUserId, granteeName, scope })
       } else if (scope === 'ENTITY_BOUND') {
         const type = entityKey.split(':')[0]
         const id = entityKey.split(':')[1]
@@ -113,8 +118,8 @@ export default function FriendWake({ store }: { store: AppStore }) {
           return
         }
         await postJson('/api/days/remote-alarm/grants', 'POST', {
-          granteeUserId: granteeId,
-          granteeName: granteeName || '好友',
+          granteeUserId,
+          granteeName,
           scope,
           entityType: type,
           entityId: id,
@@ -132,14 +137,15 @@ export default function FriendWake({ store }: { store: AppStore }) {
           return
         }
         await postJson('/api/days/remote-alarm/grants', 'POST', {
-          granteeUserId: granteeId,
-          granteeName: granteeName || '好友',
+          granteeUserId,
+          granteeName,
           scope,
           validFrom,
           validUntil,
         })
       }
-      setMessage('已授权。对方现在还不能看到你的日历，只能在有效期内给你设闹钟。')
+      setMessage('已授权对方给你设闹钟。这不会同时开放定位，位置要在下面单独开。')
+      setPerson(null)
       await reload()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '授权失败')
@@ -209,8 +215,8 @@ export default function FriendWake({ store }: { store: AppStore }) {
           )}
         </div>
       ))}
-      <label>对方账号 ID（usr_…）<input className="input" value={granteeId} onChange={(event) => setGranteeId(event.target.value)} /></label>
-      <label>显示名<input className="input" value={granteeName} onChange={(event) => setGranteeName(event.target.value)} /></label>
+      {person ? <p>已确认：{person.displayName}</p> : <p className="muted">还没有确认授权对象。</p>}
+      <TrustPersonPicker onConfirm={setPerson} />
       <div className="row wrap">
         <button className="btn ghost" onClick={() => setScope('TIME_RANGE')}>{scope === 'TIME_RANGE' ? '一段时间 ✓' : '一段时间'}</button>
         <button className="btn ghost" onClick={() => setScope('PERMANENT')}>{scope === 'PERMANENT' ? '永久 ✓' : '永久'}</button>
@@ -235,9 +241,7 @@ export default function FriendWake({ store }: { store: AppStore }) {
         </>
       )}
       <button className="btn primary" onClick={() => void authorize()}>授权这位好友</button>
-      <p className="muted">查找 KK 号需要账号目录。目录未配置时，填写对方登录日事后的 usr_ 账号即可。聊天记录不会自动变成授权。</p>
-      <label>搜索<input className="input" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      <button className="btn ghost" onClick={() => void fetchContacts(query, setGranteeId, setGranteeName, setError)}>查找</button>
+      <p className="muted">聊天记录和 KKChat 好友都不会自动变成授权。确认是此人之后才会保存对方的 usr_ 账号。</p>
 
       <h4>我可以给谁设闹钟</h4>
       {targets.filter((item) => item.canCreate).length === 0 && <p className="muted">还没有人授权你</p>}
@@ -267,18 +271,3 @@ export default function FriendWake({ store }: { store: AppStore }) {
   )
 }
 
-async function fetchContacts(query: string, setId: (value: string) => void, setName: (value: string) => void, setError: (value: string) => void) {
-  const response = await daysFetch(`/api/days/remote-alarm/contacts?q=${encodeURIComponent(query)}`)
-  const body = (await response.json().catch(() => ({}))) as { users?: { sub: string; name: string }[]; directory?: string; message?: string }
-  if (!response.ok) {
-    setError(body.message || '查找失败')
-    return
-  }
-  const first = body.users?.[0]
-  if (!first) {
-    setError(body.directory === 'unconfigured' ? '账号目录未配置。请直接填写 usr_ 账号 ID。' : '没有找到这个人')
-    return
-  }
-  setId(first.sub)
-  setName(first.name)
-}

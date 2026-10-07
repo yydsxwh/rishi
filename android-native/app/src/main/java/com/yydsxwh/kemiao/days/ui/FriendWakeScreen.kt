@@ -72,6 +72,8 @@ data class WakeUi(
     val settings: OwnerSettingsDto = OwnerSettingsDto(),
     val contacts: List<com.yydsxwh.kemiao.days.data.remote.ContactDto> = emptyList(),
     val directory: String = "",
+    val recent: List<com.yydsxwh.kemiao.days.data.remote.RecentContactDto> = emptyList(),
+    val pending: com.yydsxwh.kemiao.days.data.remote.ResolvedAccountDto? = null,
     val audit: List<com.yydsxwh.kemiao.days.data.remote.AuditDto> = emptyList(),
 )
 
@@ -97,8 +99,9 @@ class FriendWakeViewModel(app: Application) : AndroidViewModel(app) {
                         targets = client.targets(),
                         incoming = client.alarms("incoming"),
                         outgoing = client.alarms("outgoing"),
-                        settings = client.settings(),
-                        audit = client.audit(),
+                    settings = client.settings(),
+                    audit = client.audit(),
+                    recent = runCatching { client.recentContacts() }.getOrDefault(emptyList()),
                     )
                 }
             }
@@ -108,11 +111,22 @@ class FriendWakeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun search(query: String) {
+    fun resolve(query: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val found = runCatching { client.contacts(query) }.getOrNull() ?: return@launch
-            _state.update { it.copy(contacts = found.first, directory = found.second) }
+            val result = runCatching { client.resolveAccount(query) }
+            withContext(Dispatchers.Main) {
+                result.onSuccess { account -> _state.update { it.copy(pending = account, error = null) } }
+                    .onFailure { error -> _state.update { it.copy(error = messageOf(error), pending = null) } }
+            }
         }
+    }
+
+    fun stage(account: com.yydsxwh.kemiao.days.data.remote.ResolvedAccountDto) {
+        _state.update { it.copy(pending = account, error = null) }
+    }
+
+    fun clearPending() {
+        _state.update { it.copy(pending = null) }
     }
 
     fun grant(scope: String, granteeId: String, granteeName: String, from: String, until: String, entityType: String, entityId: String, entityTitle: String, starts: String, ends: String, lead: Int, trail: Int, data: AppData) {
@@ -256,7 +270,12 @@ fun localToIso(date: String, time: String): String? {
 }
 
 @Composable
-fun FriendWakeScreen(data: AppData, model: FriendWakeViewModel = viewModel()) {
+fun FriendWakeScreen(
+    data: AppData,
+    onOpenLocation: () -> Unit = {},
+    onOpenHealth: () -> Unit = {},
+    model: FriendWakeViewModel = viewModel(),
+) {
     val state by model.state.collectAsState()
     val context = LocalContext.current
     LaunchedEffect(data.updatedAt()) { model.refresh(data) }
@@ -271,6 +290,12 @@ fun FriendWakeScreen(data: AppData, model: FriendWakeViewModel = viewModel()) {
         if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         state.error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
         state.notice?.let { message -> item { Text(message) } }
+        item {
+            Row {
+                TextButton(onClick = onOpenLocation) { Text("位置守护") }
+                TextButton(onClick = onOpenHealth) { Text("设备检查") }
+            }
+        }
         item { HealthCard(context) }
         item { LimitCard(state.settings, data, model) }
         item { GrantCard(state, data, model) }
@@ -397,14 +422,22 @@ private fun GrantCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) 
                     if (grant.scope == "ENTITY_BOUND") TextButton(onClick = { model.endEntity(grant.id, data) }) { Text("事项已取消") }
                 }
             }
-            OutlinedTextField(query, { query = it }, label = { Text("KK 号、用户名或 usr_ 账号") })
-            TextButton(onClick = { model.search(query) }) { Text("查找") }
-            if (state.directory == "unconfigured") Text("账号目录还没配置。可以填写对方的 usr_ 账号 ID，只有你点授权后对方才能设闹钟。", style = MaterialTheme.typography.bodySmall)
-            state.contacts.forEach { contact ->
-                TextButton(onClick = { picked = contact.sub; pickedName = contact.name }) { Text("${contact.name} ${contact.username ?: ""} ${contact.kkNumber ?: ""}") }
+            Text("最近联系人只是快捷入口。确认是此人之后才会授权，而且不会同时打开定位。", style = MaterialTheme.typography.bodySmall)
+            state.recent.forEach { contact ->
+                TextButton(onClick = {
+                    model.stage(com.yydsxwh.kemiao.days.data.remote.ResolvedAccountDto(
+                        userSub = contact.sub,
+                        displayName = contact.displayName,
+                        matchedBy = "ACCOUNT",
+                        maskedIdentifier = contact.username ?: "最近联系人",
+                        accountName = contact.username.orEmpty(),
+                        kkNumberMasked = contact.kkNumber?.let { value -> "${value.toString().take(2)}***" }.orEmpty(),
+                    ))
+                }) { Text(contact.displayName) }
             }
-            OutlinedTextField(picked, { picked = it }, label = { Text("对方账号 ID") })
-            OutlinedTextField(pickedName, { pickedName = it }, label = { Text("显示名") })
+            OutlinedTextField(query, { query = it }, label = { Text("输入账号、KK号、邮箱或手机号") })
+            TextButton(onClick = { model.resolve(query) }) { Text("查找") }
+            if (picked.isBlank()) Text("还没有确认授权对象") else Text("已确认：$pickedName")
             Row {
                 TextButton(onClick = { scope = "TIME_RANGE" }) { Text(if (scope == "TIME_RANGE") "一段时间 ✓" else "一段时间") }
                 TextButton(onClick = { scope = "PERMANENT" }) { Text(if (scope == "PERMANENT") "永久 ✓" else "永久") }
@@ -425,6 +458,7 @@ private fun GrantCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) 
                 OutlinedTextField(trail, { trail = it }, label = { Text("事项后几小时结束") })
             }
             Button(onClick = {
+                if (picked.isBlank()) return@Button
                 val name = pickedName.ifBlank { "好友" }
                 when (scope) {
                     "PERMANENT" -> model.grant(scope, picked, name, "", "", "", "", "", "", "", 0, 0, data)
@@ -443,6 +477,23 @@ private fun GrantCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) 
                 }
             }) { Text("授权这位好友") }
         }
+    }
+    state.pending?.let { person ->
+        AlertDialog(
+            onDismissRequest = { model.clearPending() },
+            title = { Text("确认授权给") },
+            text = {
+                Text("昵称：${person.displayName}\n账号：${person.accountName}\nKK号：${person.kkNumberMasked}\n匹配：${person.maskedIdentifier}\n\n还没有授权。点确认后才可以设置叫醒权限。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    picked = person.userSub
+                    pickedName = person.displayName
+                    model.clearPending()
+                }) { Text("确认是此人") }
+            },
+            dismissButton = { TextButton(onClick = { model.clearPending() }) { Text("取消") } },
+        )
     }
     if (revokeId.isNotBlank()) {
         AlertDialog(

@@ -47,3 +47,5 @@ android-native/build
 *.keystore
 keystore.properties
 local.properties
+android-native/app/google-services.json
+android-native/app/src/main/assets/google-services.json

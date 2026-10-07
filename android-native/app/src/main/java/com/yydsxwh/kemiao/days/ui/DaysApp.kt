@@ -179,6 +179,8 @@ fun DaysApp(viewModel: DaysViewModel, activity: Activity) {
         "search" -> "搜索"
         "admin" -> "管理后台"
         "wake" -> "好友叫醒"
+        "guard" -> "位置守护"
+        "health" -> "设备检查"
         else -> "颗秒日事"
     }
     LaunchedEffect(state.notice, state.error) {
@@ -239,7 +241,11 @@ fun DaysApp(viewModel: DaysViewModel, activity: Activity) {
                 composable("today") { TodayScreen(state, viewModel, activity, todayFocus == "todos") }
                 composable("calendar") { CalendarScreen(state, viewModel) }
                 composable("timetable") { TimetableScreen(state, viewModel, activity, timetableSection, { timetableSection = it }, { nav.navigate("wake") }) }
-                composable("wake") { FriendWakeScreen(state.data) }
+                composable("wake") {
+                    FriendWakeScreen(state.data, onOpenLocation = { nav.navigate("guard") }, onOpenHealth = { nav.navigate("health") })
+                }
+                composable("guard") { LocationGuardScreen() }
+                composable("health") { DeviceHealthScreen() }
                 composable("days") { CountdownScreen(state, viewModel) }
                 composable("notes") { NotesScreen(state, viewModel) }
                 composable("todos") {
