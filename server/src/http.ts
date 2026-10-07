@@ -67,7 +67,7 @@ export function applyCors(req: IncomingMessage, res: ServerResponse, config: Day
     res.setHeader('access-control-allow-credentials', 'true')
     res.setHeader('vary', 'Origin')
     res.setHeader('access-control-allow-headers', 'authorization, content-type')
-    res.setHeader('access-control-allow-methods', 'GET, PUT, POST, DELETE, OPTIONS')
+    res.setHeader('access-control-allow-methods', 'GET, PUT, POST, PATCH, DELETE, OPTIONS')
   }
   if (req.method === 'OPTIONS') {
     res.writeHead(204)

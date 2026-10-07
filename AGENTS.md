@@ -128,10 +128,15 @@ Standard scripts are defined in `package.json`:
 - Do not block local setup on GitHub write access to `yydsxwh/Andyyyds`.
   That repo access was skipped; this product repo plus `npm run dev` is
   enough. Live listing/app were already published over SSH.
-- Android: `npm run build:android` then `npm run android:apk`. The APK
-  bundles `dist/` with `base: ./`. Native OCR posts to
-  `https://www.yydsxwh.com/api/days/timetable-ocr`. Class/exam reminders
-  use `@capacitor/local-notifications` so they can fire in the background.
+- Android: the shipping app is `android-native` (`npm run android:native:release`),
+  not the Capacitor debug APK. API origin comes from `RISHI_API_BASE_URL`
+  (default for this emergency release: `https://xiaowenhua.net/kemiao-days-api`).
+  Login can be overridden with `RISHI_LOGIN_URL` when the OIDC redirect stays
+  on the already-registered host. Do not hardcode a new origin in business code.
+  `https://xiaowenhua.net` is the temporary Hong Kong download and API host;
+  Platform Releases remains the long-term path after Kuala Lumpur access returns.
+  Class/exam and remote friend alarms use `AlarmManager` (`SCHEDULE_EXACT_ALARM`,
+  not `USE_EXACT_ALARM`).
   UI theme is campus pink/blue/flame (`#fff5f7`, `#2563eb`, `#fb7185`,
   `#ff6b35`, `#ffb703`, `#e11d48`). Do not commit `android/local.properties`
   or built APKs. Bump `versionCode` / `versionName` in

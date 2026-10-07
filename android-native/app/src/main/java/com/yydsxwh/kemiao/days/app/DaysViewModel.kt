@@ -64,6 +64,7 @@ import com.yydsxwh.kemiao.days.data.remote.DaysApi
 import com.yydsxwh.kemiao.days.data.sync.SyncEngine
 import com.yydsxwh.kemiao.days.data.sync.SyncState
 import com.yydsxwh.kemiao.days.notify.ReminderScheduler
+import com.yydsxwh.kemiao.days.notify.RemoteAlarmSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -179,6 +180,7 @@ class DaysViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(sync = SyncState.Syncing) }
             val result = engine.reconcile(_state.value.data, version)
             applySync(result.data, result.version, result.state, result.pending)
+            runCatching { RemoteAlarmSync(getApplication()).pullAndSchedule() }
         }
     }
 

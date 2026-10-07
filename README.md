@@ -61,3 +61,36 @@ npx --yes tsx src/lib/timetable-import.selftest.ts
 ```
 
 主站产品卡片在服务器上的 Andyyyds 源码里（`packages/shared/src/software-products.ts`），改完后需要在 `/var/www/yyds-course-platform` 执行 `npm run build` 并 `pm2 restart yyds-course`。
+
+## 好友叫醒
+
+被叫醒的人自己授权之后，好友才能给那部 Android 手机设闹钟。kkchat 好友、同群或同一个待办都不会自动得到权限。授权可以是一段时间、永久（仍可随时撤销）或跟随某个待办 / 日程 / 考试。
+
+手机必须用 `AlarmManager` 登记。服务端创建成功只表示「已发送，等待对方手机注册闹钟」。收到 `DEVICE_SCHEDULED` 回执之后，界面才显示对方手机已设置。没有精确闹钟权限时不会报这个成功。
+
+没有使用 `USE_EXACT_ALARM`。日事用 `SCHEDULE_EXACT_ALARM`，由用户在系统「闹钟和提醒」里允许。全屏意图不可用时仍会响铃和振动，只是退成高优先级闹钟通知。
+
+接口在日事 BFF 上，不进主站 Node 进程：
+
+- `GET/POST /api/days/remote-alarm/grants`
+- `GET/POST /api/days/remote-alarm/alarms`
+- `POST /api/days/devices`
+
+Android 的接口地址来自构建环境 `RISHI_API_BASE_URL`，登录地址可用 `RISHI_LOGIN_URL` 单独覆盖。本次临时应急默认是 `https://xiaowenhua.net/kemiao-days-api`。这是香港服务器上的隔离路径，不是长期下载中心。恢复吉隆坡后改这两个变量并重新发包，业务代码不用跟着改。长期发布仍走 Platform Releases。
+
+推送是可选的。配置了下面三个环境变量才会发 FCM data message，消息里只有「去同步」，闹钟内容仍要登录后拉取：
+
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_CLIENT_EMAIL`
+- `FIREBASE_PRIVATE_KEY`（PEM，换行写成 `\n`）
+
+不要把 service account JSON、keystore 或私钥提交进仓库。没有这三项时，手机在打开应用、回到前台，以及大约每 15 分钟的后台同步里登记闹钟。
+
+账号目录可选：
+
+- `ACCOUNT_DIRECTORY_URL`
+- `ACCOUNT_INTERNAL_TOKEN`
+
+没有目录时，授权人填写对方的 `usr_` 账号 ID。这不会建立另一套好友库。
+
+正式包版本写在 `android-native/app/build.gradle.kts`。签名只用已有的 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，构建结束删除临时 keystore。应急下载地址是 `https://xiaowenhua.net/downloads/rishi/kemiao-days.apk`，版本归档是同目录的 `kemiao-days-v<version>.apk`。上传先写临时文件，校验 SHA-256 后再改名。

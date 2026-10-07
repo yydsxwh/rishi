@@ -178,6 +178,7 @@ fun DaysApp(viewModel: DaysViewModel, activity: Activity) {
         "notes" -> "便签"
         "search" -> "搜索"
         "admin" -> "管理后台"
+        "wake" -> "好友叫醒"
         else -> "颗秒日事"
     }
     LaunchedEffect(state.notice, state.error) {
@@ -237,7 +238,8 @@ fun DaysApp(viewModel: DaysViewModel, activity: Activity) {
             NavHost(navController = nav, startDestination = "today") {
                 composable("today") { TodayScreen(state, viewModel, activity, todayFocus == "todos") }
                 composable("calendar") { CalendarScreen(state, viewModel) }
-                composable("timetable") { TimetableScreen(state, viewModel, activity, timetableSection) { timetableSection = it } }
+                composable("timetable") { TimetableScreen(state, viewModel, activity, timetableSection, { timetableSection = it }, { nav.navigate("wake") }) }
+                composable("wake") { FriendWakeScreen(state.data) }
                 composable("days") { CountdownScreen(state, viewModel) }
                 composable("notes") { NotesScreen(state, viewModel) }
                 composable("todos") {
@@ -778,6 +780,7 @@ private fun TimetableScreen(
     activity: Activity,
     section: String,
     onSection: (String) -> Unit,
+    onOpenWake: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("timetable-sections")) {
@@ -794,7 +797,7 @@ private fun TimetableScreen(
             when (section) {
                 "exams" -> ExamsScreen(state, vm, activity)
                 "self" -> SelfScreen(state, vm, activity)
-                "remind" -> RemindersPane(state, vm)
+                "remind" -> RemindersPane(state, vm, onOpenWake)
                 else -> ScheduleScreen(state, vm, activity)
             }
         }
@@ -802,12 +805,14 @@ private fun TimetableScreen(
 }
 
 @Composable
-private fun RemindersPane(state: DaysUiState, vm: DaysViewModel) {
+private fun RemindersPane(state: DaysUiState, vm: DaysViewModel, onOpenWake: () -> Unit) {
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("提醒", fontWeight = FontWeight.SemiBold)
+                    Button(onClick = onOpenWake, modifier = Modifier.fillMaxWidth()) { Text("好友叫醒") }
+                    Text("授权好友在你的手机上设置真正的闹钟。默认谁都不能。", style = MaterialTheme.typography.bodySmall, color = Muted)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("开启提醒", Modifier.weight(1f))
                         Switch(state.data.reminderSettings.enabled, { vm.updateReminders(state.data.reminderSettings.copy(enabled = it)) })

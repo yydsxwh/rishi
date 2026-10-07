@@ -20,6 +20,11 @@ export type DaysConfig = {
   nativeHandoffUri: string
   adminSubs: string[]
   configEncryptionKey: string
+  accountDirectoryUrl: string
+  accountInternalToken: string
+  firebaseProjectId: string
+  firebaseClientEmail: string
+  firebasePrivateKey: string
 }
 
 function optionalUrl(value: string | undefined, fallback: string): string {
@@ -87,7 +92,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): DaysConfig {
     nativeHandoffUri: env.RISHI_NATIVE_HANDOFF_URI || 'kemiao-days://auth',
     adminSubs: splitList(env.RISHI_ADMIN_SUBS, ''),
     configEncryptionKey: env.RISHI_CONFIG_ENCRYPTION_KEY || '',
+    accountDirectoryUrl: optionalUrl(env.ACCOUNT_DIRECTORY_URL, env.ACCOUNT_ISSUER ? `${env.ACCOUNT_ISSUER.replace(/\/+$/, '')}/api/internal/directory/users` : ''),
+    accountInternalToken: env.ACCOUNT_INTERNAL_TOKEN || '',
+    firebaseProjectId: env.FIREBASE_PROJECT_ID || '',
+    firebaseClientEmail: env.FIREBASE_CLIENT_EMAIL || '',
+    firebasePrivateKey: (env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
   }
+}
+
+export function fcmConfigured(config: DaysConfig): boolean {
+  return Boolean(config.firebaseProjectId && config.firebaseClientEmail && config.firebasePrivateKey)
 }
 
 export function oidcConfigured(config: DaysConfig): boolean {

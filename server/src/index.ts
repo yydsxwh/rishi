@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { handleAccountProbe, handleAdminMe, handleIntegrations, handlePlatformProbe, handleProductApis } from './integrations'
-import { loadConfig, oidcConfigured, platformConfigured, type DaysConfig } from './config'
+import { fcmConfigured, loadConfig, oidcConfigured, platformConfigured, type DaysConfig } from './config'
 import { MAX_OCR_FILE_BYTES, OcrError, recognizeWithPlatform, type OcrKind } from './ai-ocr'
 import { consumeHandoff, issueHandoff } from './handoff'
 import {
@@ -21,6 +21,7 @@ import { issueSession, OIDC_COOKIE, persistSession, publicUser, readOidcStart, r
 import { migrateLegacyIfNeeded, readRecord, writeRecord } from './sync-store'
 import { upsertUser } from './users'
 import { handleHolidayImport, handleHolidays } from './holidays'
+import { handleRemoteAlarmRoutes } from './remote-alarm-http'
 
 const MAX_JSON_BYTES = 4 * 1024 * 1024
 /** 上传类接口统一用 OCR 的上限，客户端与 nginx 也是同一个数 */
@@ -386,6 +387,8 @@ export function createDaysServer(config: DaysConfig) {
           timestamp: new Date().toISOString(),
           oidc: oidcConfigured(config),
           platform: platformConfigured(config),
+          remoteAlarm: true,
+          fcm: fcmConfigured(config),
         })
         return
       }
@@ -410,6 +413,7 @@ export function createDaysServer(config: DaysConfig) {
       if (path === '/api/days/admin/integrations/apis' || path.startsWith('/api/days/admin/integrations/apis/')) {
         return void (await handleProductApis(req, res, url, config))
       }
+      if (await handleRemoteAlarmRoutes(req, res, url, config)) return
       sendJson(res, 404, { error: 'not_found' })
     } catch (error) {
       if (error instanceof Error && error.message === 'TOO_LARGE') {
