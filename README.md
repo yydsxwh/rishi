@@ -94,3 +94,7 @@ Android 的接口地址来自构建环境 `RISHI_API_BASE_URL`，登录地址可
 没有目录时，授权人填写对方的 `usr_` 账号 ID。这不会建立另一套好友库。
 
 正式包版本写在 `android-native/app/build.gradle.kts`。签名只用已有的 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，构建结束删除临时 keystore。应急下载地址是 `https://xiaowenhua.net/downloads/rishi/kemiao-days.apk`，版本归档是同目录的 `kemiao-days-v<version>.apk`。上传先写临时文件，校验 SHA-256 后再改名。
+
+`www.yydsxwh.com` 的 DNS 已经指向吉隆坡。这次没有吉隆坡登录密钥，所以没有改吉隆坡。香港 BFF 的登录回调改成了 `https://xiaowenhua.net/kemiao-days-api/api/days/auth/callback`，这样状态 cookie 和回调在同一个域名。账号中心目前还没有登记这个地址。站长需要在账号中心「软件产品」里给 client `rishi` 增加这一条回调，登录才会通过。登记之前，新 APK 的登录会被账号中心拒绝，提示「回调地址未登记」。
+
+恢复吉隆坡之后，把 `ACCOUNT_REDIRECT_URI` 和日事后台里保存的 Account 回调改回 `https://www.yydsxwh.com/api/days/auth/callback`，再把 `RISHI_API_BASE_URL` 指回正式入口并重新发包。香港上的 `integrations.enc.bak-remote-alarm` 是改回调前的备份。
