@@ -1477,6 +1477,26 @@ select.input {
   justify-content: center;
 }
 
+.gear-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.settings-panel {
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(70vh, 520px);
+  overflow: auto;
+}
+
+.settings-panel h4 {
+  margin: 12px 0 4px;
+}
+
 .avatar-btn {
   position: relative;
   width: 38px;

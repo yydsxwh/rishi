@@ -19,6 +19,7 @@ export type RemoteGrant = {
   entityEndsAt?: string
   canCreate?: boolean
   blockReason?: string | null
+  device?: RemoteDeviceStatus
 }
 
 export type RemoteAlarmRecord = {
@@ -35,16 +36,33 @@ export type RemoteAlarmRecord = {
   acceptance?: string
 }
 
-/** 只有手机回执之后才说「已设置」。服务端创建成功一律是已发送。 */
+export type RemoteDeviceStatus = {
+  platform?: string
+  lastSeenAt?: string
+  nativeAlarm?: string
+  remoteAlarm?: { supported?: boolean; exactAlarmPermission?: string; notificationPermission?: string }
+}
+
+/** 只有 DEVICE_SCHEDULED 才说对方手机已成功设置。 */
 export function remoteAlarmStatusText(status: string, deviceReady = false): string {
   if (deviceReady && status === 'FIRED') return '已响铃'
-  if (deviceReady || status === 'DEVICE_SCHEDULED') return '对方手机已成功设置闹钟'
+  if (deviceReady || status === 'DEVICE_SCHEDULED') return '对方手机已成功设置'
   if (status === 'MISSED') return '错过了，没有补响'
   if (status === 'CANCELLED') return '已取消'
-  if (status === 'FAILED') return '手机没能登记闹钟'
-  if (status === 'EXPIRED') return '授权已失效'
-  return '已发送，等待对方手机注册闹钟'
+  if (status === 'FAILED') return '失败'
+  if (status === 'EXPIRED') return '已过期'
+  if (status === 'DELIVERED') return '已发送'
+  return '等待对方设备接收'
 }
+
+export function maskEmail(email: string | undefined): string {
+  const value = (email || '').trim()
+  const at = value.indexOf('@')
+  if (at <= 0 || at === value.length - 1) return '邮箱未返回'
+  return `${value.slice(0, 1)}***@${value.slice(at + 1)}`
+}
+
+export const WEB_BUILD = '2.6.1'
 
 async function parse<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => ({}))) as T & { error?: string; message?: string }

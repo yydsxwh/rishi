@@ -20,4 +20,10 @@ class AppearanceStore(context: Context) {
 
     fun pushProvider(): String = prefs.getString("pushProvider", "none") ?: "none"
     fun setPushProvider(value: String) = prefs.edit().putString("pushProvider", value).apply()
+
+    fun wakeGuard(): Boolean = prefs.getBoolean("wakeGuard", false)
+    fun setWakeGuard(value: Boolean) = prefs.edit().putBoolean("wakeGuard", value).apply()
+
+    fun wakeGuardNote(): String = prefs.getString("wakeGuardNote", "") ?: ""
+    fun setWakeGuardNote(value: String) = prefs.edit().putString("wakeGuardNote", value).apply()
 }

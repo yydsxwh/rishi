@@ -78,6 +78,21 @@ function audit(db: { audit: AuditEvent[] }, event: Omit<AuditEvent, 'id' | 'at'>
   db.audit.push({ id: `al_${randomToken(9)}`, at: event.at || new Date().toISOString(), ...event })
 }
 
+const PENDING_STATUSES: AlarmStatus[] = ['CREATED', 'DELIVERY_PENDING', 'DELIVERED']
+const pendingPolls = new Map<string, number[]>()
+
+/** 测试之间清掉内存里的拉取计数。 */
+export function resetPendingRateForTests(): void {
+  pendingPolls.clear()
+}
+
+function assertPendingRate(userId: string, now: number): void {
+  const hits = (pendingPolls.get(userId) || []).filter((at) => now - at < 60_000)
+  if (hits.length >= 40) deny('REMOTE_ALARM_RATE_LIMITED', 429, '拉取太频繁，请稍后再试')
+  hits.push(now)
+  pendingPolls.set(userId, hits)
+}
+
 function publicAlarm(alarm: RemoteAlarm) {
   return { ...alarm, requestHash: undefined, clientNonce: undefined, acceptance: deliveryAcceptance(alarm.status), deviceReady: deviceReady(alarm.status) }
 }
@@ -453,6 +468,35 @@ export async function listAlarms(config: DaysConfig, actor: Actor, role: string)
   return rows.map(publicAlarm)
 }
 
+/** 只返回当前账号仍可登记的待处理闹钟。授权过期、暂停、撤销的不会出现。 */
+export async function listPending(config: DaysConfig, actor: Actor, now = new Date()) {
+  const nowMs = now.getTime()
+  assertPendingRate(actor.sub, nowMs)
+  const db = await readAlarmDb(config)
+  const prefs = prefsOf(db.prefs, actor.sub)
+  const mine = db.alarms.filter((alarm) => alarm.ownerUserId === actor.sub)
+  const cursor = sha256Hex(mine.map((alarm) => `${alarm.id}:${alarm.status}:${alarm.revision}`).join('|'))
+  const alarms = mine.filter((alarm) => {
+    if (!PENDING_STATUSES.includes(alarm.status)) return false
+    const grant = db.grants.find((item) => item.id === alarm.grantId)
+    if (!grant) return false
+    return grantBlockReason(grant, nowMs, prefs) == null
+  })
+  const device = publicDeviceStatus(db.devices.filter((item) => item.userId === actor.sub))
+  return {
+    cursor,
+    alarms: alarms.map(publicAlarm),
+    device: {
+      registered: device.platform === 'android',
+      platform: device.platform,
+      lastSeenAt: device.lastSeenAt || '',
+      exactAlarmPermission: device.remoteAlarm.exactAlarmPermission,
+      notificationPermission: device.remoteAlarm.notificationPermission,
+      nativeAlarm: device.nativeAlarm,
+    },
+  }
+}
+
 export async function reportAlarm(config: DaysConfig, actor: Actor, id: string, status: AlarmStatus, failureReason: string | undefined, now = new Date()) {
   const allowed: AlarmStatus[] = ['DELIVERED', 'DEVICE_SCHEDULED', 'FIRED', 'FAILED', 'MISSED']
   if (!allowed.includes(status)) deny('REMOTE_ALARM_OUT_OF_SCOPE', 400, '状态无效')
@@ -463,7 +507,14 @@ export async function reportAlarm(config: DaysConfig, actor: Actor, id: string, 
     if (row.status === 'CANCELLED' || row.status === 'EXPIRED') {
       deny('REMOTE_ALARM_GRANT_REVOKED', 409, '闹钟已取消')
     }
+    if (status === 'DELIVERED' || status === 'DEVICE_SCHEDULED') {
+      const grant = db.grants.find((item) => item.id === row.grantId)
+      if (!grant) deny('REMOTE_ALARM_NOT_AUTHORIZED', 409, '授权已不存在')
+      const reason = grantBlockReason(grant, now.getTime(), prefsOf(db.prefs, row.ownerUserId))
+      if (reason) deny(reason, 409, '当前授权不能登记闹钟')
+    }
     if (row.status === 'FIRED' && status !== 'FIRED') return publicAlarm(row)
+    if (row.status === 'DEVICE_SCHEDULED' && status === 'DEVICE_SCHEDULED') return publicAlarm(row)
     if (status === 'MISSED' || status === 'FAILED') row.failureReason = cleanText(failureReason, 160) || status
     if (status === 'DEVICE_SCHEDULED' && Date.parse(row.triggerAt) <= now.getTime()) {
       row.status = 'MISSED'

@@ -50,6 +50,7 @@ import com.yydsxwh.kemiao.days.data.model.OemGuides
 import com.yydsxwh.kemiao.days.data.remote.AppVersionDto
 import com.yydsxwh.kemiao.days.data.remote.DaysApi
 import com.yydsxwh.kemiao.days.data.sync.SyncWorker
+import com.yydsxwh.kemiao.days.notify.WakeGuardService
 import com.yydsxwh.kemiao.days.ui.theme.Brand
 import com.yydsxwh.kemiao.days.ui.theme.Muted
 import kotlinx.coroutines.Dispatchers
@@ -177,6 +178,21 @@ fun SettingsScreen(state: DaysUiState, vm: DaysViewModel, activity: Activity, on
         }
         Text("界面目前是中文。时间沿用 24 小时制，没有单独的 12 小时开关。", style = MaterialTheme.typography.bodySmall, color = Muted)
         Text("通知与后台", fontWeight = FontWeight.SemiBold)
+        var wakeGuard by remember { mutableStateOf(appearance.wakeGuard()) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("好友叫醒实时守护", Modifier.weight(1f))
+            Switch(wakeGuard, { checked ->
+                wakeGuard = checked
+                appearance.setWakeGuard(checked)
+                if (checked) runCatching { WakeGuardService.start(activity) }
+                else {
+                    appearance.setWakeGuardNote("")
+                    runCatching { WakeGuardService.stop(activity) }
+                }
+            })
+        }
+        Text("开启后会显示常驻通知「颗秒日事 · 好友叫醒守护中」，可随时关闭。当前未配置厂商 Push 也能接收。", style = MaterialTheme.typography.bodySmall, color = Muted)
+        appearance.wakeGuardNote().takeIf { it.isNotBlank() }?.let { Text(it) }
         Text("当前推送通道：${pushLabel(appearance.pushProvider())}")
         Text("${guide.first}：${guide.second.firstOrNull().orEmpty()}", style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = onOpenHealth) { Text("打开设备检查") }
@@ -282,7 +298,7 @@ private fun formatTime(millis: Long): String = Instant.ofEpochMilli(millis).atZo
 private fun pushLabel(provider: String) = when (provider) {
     "fcm" -> "FCM（已拿到 token）"
     "huawei", "xiaomi", "oppo", "vivo", "honor" -> "$provider（已拿到 token）"
-    else -> "未注册推送，打开应用和后台同步仍会拉取"
+    else -> "未配置厂商 Push。实时守护、打开应用和后台同步仍会拉取"
 }
 
 object LaunchGate {

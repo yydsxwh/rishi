@@ -12,7 +12,11 @@ import {
   cancelAlarm,
   createAlarm,
   createGrant,
+  listPending,
   pauseAll,
+  registerDevice,
+  reportAlarm,
+  resetPendingRateForTests,
   revokeGrant,
   updateAlarm,
   updateGrant,
@@ -201,8 +205,94 @@ test('HTTP 未登录拒绝，登录后创建仍只表示已发送', async () => 
     assert.equal(payload.alarm.status, 'DELIVERY_PENDING')
     assert.equal(payload.alarm.deviceReady, false)
     assert.equal(payload.alarm.acceptance, 'sent')
+    const pendingAnon = await fetch(`http://127.0.0.1:${port}/api/days/remote-alarm/pending`)
+    assert.equal(pendingAnon.status, 401)
+    const pending = await fetch(`http://127.0.0.1:${port}/api/days/remote-alarm/pending`, {
+      headers: { authorization: `Bearer ${issued.token}` },
+    })
+    assert.equal(pending.status, 200)
+    const pendingBody = (await pending.json()) as { alarms: { id: string; status: string }[]; device: { registered: boolean } }
+    assert.equal(pendingBody.alarms.length, 1)
+    assert.equal(pendingBody.alarms[0].status, 'DELIVERY_PENDING')
+    assert.equal(pendingBody.device.registered, false)
   } finally {
     server.close()
+    await ctx.cleanup()
+  }
+})
+
+test('pending 只给出仍可登记的闹钟，回执后不再返回，重复请求保持同一条', async () => {
+  resetPendingRateForTests()
+  const ctx = await config()
+  try {
+    const grant = await createGrant(ctx.config, owner, { granteeUserId: alice.sub, scope: 'PERMANENT' }, NOW)
+    const first = await createAlarm(ctx.config, alice, alarmBody(grant.id, owner.sub, 'same'), NOW)
+    const replay = await createAlarm(ctx.config, alice, alarmBody(grant.id, owner.sub, 'same'), NOW)
+    assert.equal(replay.id, first.id)
+    await registerDevice(ctx.config, owner, { platform: 'android', appVersion: '2.6.1', capabilities: { remoteAlarm: { exactAlarmPermission: 'granted', notificationPermission: 'granted' } } })
+    const waiting = await listPending(ctx.config, owner, NOW)
+    assert.equal(waiting.alarms.length, 1)
+    assert.equal(waiting.device.registered, true)
+    assert.equal(waiting.device.exactAlarmPermission, 'granted')
+    const stranger = await listPending(ctx.config, bob, NOW)
+    assert.equal(stranger.alarms.length, 0)
+
+    const scheduled = await reportAlarm(ctx.config, owner, first.id, 'DEVICE_SCHEDULED', undefined, NOW)
+    assert.equal(scheduled.status, 'DEVICE_SCHEDULED')
+    assert.equal(scheduled.deviceReady, true)
+    const again = await reportAlarm(ctx.config, owner, first.id, 'DEVICE_SCHEDULED', undefined, NOW)
+    assert.equal(again.revision, scheduled.revision)
+    const done = await listPending(ctx.config, owner, NOW)
+    assert.equal(done.alarms.length, 0)
+
+    const pausedGrant = await createGrant(ctx.config, owner, { granteeUserId: alice.sub, scope: 'PERMANENT' }, NOW)
+    const held = await createAlarm(ctx.config, alice, alarmBody(pausedGrant.id, owner.sub, 'hold', '2026-10-08T05:00:00.000Z'), NOW)
+    await updateGrant(ctx.config, owner, pausedGrant.id, { status: 'PAUSED' }, NOW)
+    assert.equal((await listPending(ctx.config, owner, NOW)).alarms.some((alarm) => alarm.id === held.id), false)
+    assert.equal(await codeOf(() => reportAlarm(ctx.config, owner, held.id, 'DEVICE_SCHEDULED', undefined, NOW)), 'REMOTE_ALARM_NOT_AUTHORIZED')
+
+    const ranged = await createGrant(ctx.config, owner, {
+      granteeUserId: alice.sub,
+      scope: 'TIME_RANGE',
+      validFrom: '2026-10-08T00:00:00.000Z',
+      validUntil: '2026-10-08T06:00:00.000Z',
+    }, NOW)
+    const expiring = await createAlarm(ctx.config, alice, alarmBody(ranged.id, owner.sub, 'expiring', '2026-10-08T05:30:00.000Z'), NOW)
+    const later = new Date('2026-10-08T07:00:00.000Z')
+    assert.equal((await listPending(ctx.config, owner, later)).alarms.some((alarm) => alarm.id === expiring.id), false)
+
+    const bound = await createGrant(ctx.config, owner, {
+      granteeUserId: alice.sub,
+      scope: 'ENTITY_BOUND',
+      entityType: 'exam',
+      entityId: 'exam_1',
+      entityTitle: '期末',
+      entityStartsAt: '2026-10-08T04:00:00.000Z',
+      entityEndsAt: '2026-10-08T05:00:00.000Z',
+      leadHours: 1,
+      trailHours: 0,
+    }, NOW)
+    const inside = new Date('2026-10-08T03:10:00.000Z')
+    await createAlarm(ctx.config, alice, alarmBody(bound.id, owner.sub, 'bound', '2026-10-08T03:30:00.000Z'), inside)
+    const outside = new Date('2026-10-08T06:30:00.000Z')
+    const outsidePending = await listPending(ctx.config, owner, outside)
+    assert.equal(outsidePending.alarms.some((alarm) => alarm.grantId === bound.id), false)
+
+    await revokeGrant(ctx.config, owner, grant.id, false, NOW)
+    assert.equal(await codeOf(() => reportAlarm(ctx.config, owner, first.id, 'DELIVERED', undefined, NOW)), 'REMOTE_ALARM_GRANT_REVOKED')
+  } finally {
+    await ctx.cleanup()
+  }
+})
+
+test('pending 拉取有频率上限', async () => {
+  resetPendingRateForTests()
+  const ctx = await config()
+  const limited: Actor = { sub: 'usr_rateown', name: '限流' }
+  try {
+    for (let i = 0; i < 40; i += 1) await listPending(ctx.config, limited, NOW)
+    assert.equal(await codeOf(() => listPending(ctx.config, limited, NOW)), 'REMOTE_ALARM_RATE_LIMITED')
+  } finally {
     await ctx.cleanup()
   }
 })

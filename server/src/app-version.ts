@@ -13,16 +13,16 @@ export type AppVersionInfo = {
 
 /** 版本以环境变量为准。接口失败时客户端继续使用，不会把所有人锁在外面。 */
 export function androidVersion(config: DaysConfig, env: NodeJS.ProcessEnv = process.env): AppVersionInfo {
-  const code = positive(env.DAYS_ANDROID_VERSION_CODE, 20)
+  const code = positive(env.DAYS_ANDROID_VERSION_CODE, 21)
   const min = positive(env.DAYS_ANDROID_MIN_VERSION_CODE, 0)
   return {
     platform: 'android',
-    latestVersionName: (env.DAYS_ANDROID_VERSION_NAME || '2.6.0').trim(),
+    latestVersionName: (env.DAYS_ANDROID_VERSION_NAME || '2.6.1').trim(),
     latestVersionCode: code,
     minSupportedVersionCode: Math.min(min, code),
     forceUpdate: env.DAYS_ANDROID_FORCE_UPDATE === '1' && min > 0,
     downloadUrl: (env.DAYS_ANDROID_DOWNLOAD_URL || `${config.publicOrigin}/products/days/kemiao-days.apk`).trim(),
-    releaseNotes: (env.DAYS_ANDROID_RELEASE_NOTES || '个人中心、设置、检查更新，以及可切换的推送通道。没有配置厂商推送时仍可使用。').trim(),
+    releaseNotes: (env.DAYS_ANDROID_RELEASE_NOTES || '好友叫醒实时守护：前台常驻通知下短轮询待处理闹钟，不依赖厂商推送。').trim(),
     publishedAt: (env.DAYS_ANDROID_PUBLISHED_AT || '').trim(),
   }
 }

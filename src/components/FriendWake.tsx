@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppStore } from '../hooks/useAppStore'
+import { daysFetch } from '../lib/days-api'
 import { loadWake, postJson, remoteAlarmStatusText, type RemoteAlarmRecord, type RemoteGrant } from '../lib/remote-alarm'
 import type { TrustedAccount } from '../lib/location'
 import TrustPersonPicker from './TrustPersonPicker'
@@ -61,6 +62,8 @@ export default function FriendWake({ store }: { store: AppStore }) {
   const [title, setTitle] = useState('起床啦')
   const [note, setNote] = useState('')
   const [revokeId, setRevokeId] = useState('')
+  const [me, setMe] = useState('')
+  const notified = useRef(new Set<string>())
 
   const choices = useMemo(() => {
     return [
@@ -94,9 +97,33 @@ export default function FriendWake({ store }: { store: AppStore }) {
 
   useEffect(() => {
     void reload()
-    // 只在进入提醒页时拉一次。事项删除用墓碑判断，避免每次渲染都打接口。
+    void daysFetch('/api/days/auth/session')
+      .then((response) => response.json())
+      .then((body: { user?: { sub?: string; id?: string } | null }) => setMe(body.user?.sub || body.user?.id || ''))
+      .catch(() => setMe(''))
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void reload()
+    }, 20_000)
+    return () => window.clearInterval(timer)
+    // 打开提醒页后按固定间隔刷新闹钟状态。事项删除用墓碑判断。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!me || typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    const now = Date.now()
+    for (const alarm of alarms) {
+      if (alarm.ownerUserId !== me || notified.current.has(alarm.id)) continue
+      const trigger = Date.parse(alarm.triggerAt)
+      if (!Number.isFinite(trigger) || trigger - now > 120_000 || trigger < now - 60_000) continue
+      notified.current.add(alarm.id)
+      try {
+        void new Notification('颗秒日事提醒', { body: `${alarm.title}。这是页面打开时的浏览器通知，不是 Android 系统闹钟。` })
+      } catch {
+        // 浏览器拒绝时不影响闹钟状态。
+      }
+    }
+  }, [alarms, me])
 
   async function authorize() {
     setError('')
@@ -248,6 +275,7 @@ export default function FriendWake({ store }: { store: AppStore }) {
       {targets.filter((item) => item.canCreate).map((target) => (
         <button key={target.id} className="btn ghost" onClick={() => setGrantId(target.id)}>{grantId === target.id ? `${target.ownerName} ✓` : target.ownerName}</button>
       ))}
+      {grantId && <DeviceHint target={targets.find((item) => item.id === grantId)} />}
       <div className="row wrap">
         <input className="input" type="date" value={alarmDate} onChange={(event) => setAlarmDate(event.target.value)} />
         <input className="input" type="time" value={alarmTime} onChange={(event) => setAlarmTime(event.target.value)} />
@@ -267,7 +295,19 @@ export default function FriendWake({ store }: { store: AppStore }) {
       ))}
       <h4>记录</h4>
       {audit.slice(0, 8).map((event) => <p key={event.id}>{event.at} {event.summary}</p>)}
+      <p className="muted">关闭浏览器后，网页不能替对方注册 Android 系统闹钟。浏览器通知只在这个页面开着时作辅助。</p>
     </div>
   )
+}
+
+function DeviceHint({ target }: { target?: RemoteGrant }) {
+  if (!target) return null
+  const device = target.device
+  if (device?.platform !== 'android') {
+    return <p>对方需安装颗秒日事 Android App 才能注册系统闹钟</p>
+  }
+  const seen = device.lastSeenAt ? device.lastSeenAt.replace('T', ' ').slice(0, 16) : '还没有同步时间'
+  const exact = device.remoteAlarm?.exactAlarmPermission === 'granted' ? '精确闹钟已允许' : '精确闹钟状态未知或未允许'
+  return <p>对方 Android 最近同步 {seen}。{exact}。只有回执「对方手机已成功设置」才算设好。</p>
 }
 

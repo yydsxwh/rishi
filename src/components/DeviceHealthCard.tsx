@@ -16,8 +16,8 @@ export default function DeviceHealthCard() {
         const signedIn = Boolean(body.user)
         setItems([
           { ok: signedIn, label: '登录', detail: signedIn ? `已登录 ${body.user?.name || ''}` : '还没登录，授权和同步都不可用' },
-          { ok: false, label: '推送', detail: '网页不能接收 FCM。远程闹钟要装 Android 客户端。' },
-          { ok: null, label: '精确闹钟', detail: '网页不能登记系统闹钟。' },
+          { ok: null, label: '推送', detail: '当前未配置厂商 Push。Android 可通过「好友叫醒实时守护」及时接收远程闹钟；未开启时仍会在打开 App、回到前台和后台周期同步时检查。' },
+          { ok: null, label: '精确闹钟', detail: '网页不能登记系统闹钟。对方需安装颗秒日事 Android App 才能注册系统闹钟。' },
           { ok: null, label: '定位', detail: '点「更新我的最近位置」后才会向系统要定位权限。' },
           { ok: false, label: 'iPhone 远程闹钟', detail: '尚未验证，不能当成已经支持。' },
         ])

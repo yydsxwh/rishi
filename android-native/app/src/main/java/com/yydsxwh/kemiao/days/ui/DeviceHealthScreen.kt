@@ -24,10 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.yydsxwh.kemiao.days.data.local.AppearanceStore
 import com.yydsxwh.kemiao.days.data.local.SecureSession
 import com.yydsxwh.kemiao.days.data.model.OemGuides
 import com.yydsxwh.kemiao.days.location.LocationUploader
-import com.yydsxwh.kemiao.days.notify.FirebaseBootstrap
 
 @Composable
 fun DeviceHealthScreen() {
@@ -61,12 +61,14 @@ private fun healthRows(context: Context): List<Pair<Boolean, String>> {
     }
     val power = context.getSystemService(PowerManager::class.java)
     val batteryOk = power?.isIgnoringBatteryOptimizations(context.packageName) == true
-    val push = FirebaseBootstrap.ready(context) && FirebaseBootstrap.token().isNotBlank()
+    val guard = AppearanceStore(context).wakeGuard()
+    val guardNote = AppearanceStore(context).wakeGuardNote()
     val location = LocationUploader.hasForegroundPermission(context)
     val background = LocationUploader.hasBackgroundPermission(context)
     return listOf(
         signedIn to "登录",
-        push to "推送。没有 Firebase 配置时，打开应用和大约 15 分钟的后台同步仍会拉闹钟",
+        (guardNote.isBlank()) to (if (guard) "好友叫醒实时守护已开启" else "好友叫醒实时守护未开启。打开 App、回到前台和后台周期同步仍会检查") + if (guardNote.isBlank()) "" else "。$guardNote",
+        true to "当前未配置厂商 Push。这不阻止好友叫醒。",
         notifications to "通知",
         exact to "精确闹钟",
         batteryOk to "电池后台限制",
