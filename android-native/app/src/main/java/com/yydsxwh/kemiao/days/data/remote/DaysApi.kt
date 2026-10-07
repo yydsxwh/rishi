@@ -33,6 +33,16 @@ data class RemoteSnapshot(
 @Serializable data class SessionResponse(val user: SessionUser? = null)
 @Serializable data class PushResult(val version: Long, val updatedAt: String? = null)
 @Serializable data class AdminMe(val admin: Boolean = false, val sub: String? = null)
+@Serializable data class AppVersionDto(
+    val platform: String = "android",
+    val latestVersionName: String = "",
+    val latestVersionCode: Int = 0,
+    val minSupportedVersionCode: Int = 0,
+    val forceUpdate: Boolean = false,
+    val downloadUrl: String = "",
+    val releaseNotes: String = "",
+    val publishedAt: String = "",
+)
 
 class DaysApi(
     private val origin: String = BuildConfig.DAYS_API_ORIGIN,
@@ -63,6 +73,12 @@ class DaysApi(
         client.newCall(builder.build()).execute().use { response ->
             return response.code to (response.body?.string().orEmpty())
         }
+    }
+
+    fun appVersion(): AppVersionDto? {
+        val (code, text) = request("/api/days/app/version?platform=android")
+        if (code !in 200..299) return null
+        return runCatching { DaysJson.decodeFromString(AppVersionDto.serializer(), text) }.getOrNull()
     }
 
     fun session(): SessionUser? {

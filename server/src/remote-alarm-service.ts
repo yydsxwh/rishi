@@ -24,6 +24,7 @@ import {
   isTimeZone,
 } from './remote-alarm-domain'
 import { normalizeCapabilities, publicDeviceStatus } from './device-status'
+import { choosePushProvider, isPushProvider, type PushRegion } from './push-domain'
 import { wakeOwnerDevices } from './remote-alarm-push'
 import { readLocationDb } from './location-store'
 import { readAlarmDb, withAlarmDb, type AuditEvent, type DevicePlatform, type UserDevice } from './remote-alarm-store'
@@ -521,13 +522,21 @@ export async function listAudit(config: DaysConfig, actor: Actor) {
   return db.audit.filter((event) => event.ownerUserId === actor.sub || event.actorUserId === actor.sub).slice(-200).reverse()
 }
 
-export async function registerDevice(config: DaysConfig, actor: Actor, input: { id?: string; platform?: string; pushToken?: string; appVersion?: string; capabilities?: unknown }) {
+export async function registerDevice(config: DaysConfig, actor: Actor, input: { id?: string; platform?: string; pushToken?: string; pushProvider?: string; gmsAvailable?: boolean; region?: string; appVersion?: string; capabilities?: unknown }) {
   const platform: DevicePlatform | '' = input.platform === 'android' || input.platform === 'ios' || input.platform === 'web' ? input.platform : ''
   if (!platform) deny('REMOTE_ALARM_OUT_OF_SCOPE', 400, '设备平台无效')
   const capabilities = normalizeCapabilities(platform, input.capabilities)
   const nowIso = new Date().toISOString()
+  const region: PushRegion = input.region === 'cn' || input.region === 'global' ? input.region : 'unknown'
+  const hinted = typeof input.pushProvider === 'string' && isPushProvider(input.pushProvider) ? input.pushProvider : 'none'
   return withAlarmDb(config, (db) => {
     const token = cleanText(input.pushToken, 4096)
+    const provider = choosePushProvider({
+      platform,
+      region,
+      gms: input.gmsAvailable === true,
+      tokens: token && hinted !== 'none' ? { [hinted]: token } : token ? { fcm: token } : {},
+    })
     if (token) {
       for (const device of db.devices) {
         if (device.pushToken === token && device.userId !== actor.sub) {
@@ -540,6 +549,9 @@ export async function registerDevice(config: DaysConfig, actor: Actor, input: { 
     if (existing) {
       existing.platform = platform
       existing.pushToken = token
+      existing.pushProvider = provider
+      existing.gmsAvailable = input.gmsAvailable === true
+      existing.region = region
       existing.appVersion = cleanText(input.appVersion, 40)
       existing.lastSeenAt = nowIso
       existing.enabled = true
@@ -551,6 +563,9 @@ export async function registerDevice(config: DaysConfig, actor: Actor, input: { 
       userId: actor.sub,
       platform,
       pushToken: token,
+      pushProvider: provider,
+      gmsAvailable: input.gmsAvailable === true,
+      region,
       appVersion: cleanText(input.appVersion, 40),
       lastSeenAt: nowIso,
       enabled: true,
@@ -569,6 +584,7 @@ function publicDevice(device: UserDevice) {
     lastSeenAt: device.lastSeenAt,
     enabled: device.enabled,
     hasToken: Boolean(device.pushToken),
+    pushProvider: device.pushProvider || 'none',
     capabilities: publicDeviceStatus([device]),
   }
 }

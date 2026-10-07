@@ -50,6 +50,9 @@ export type UserDevice = {
   userId: string
   platform: DevicePlatform
   pushToken: string
+  pushProvider?: string
+  gmsAvailable?: boolean
+  region?: string
   appVersion: string
   lastSeenAt: string
   enabled: boolean

@@ -37,7 +37,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -169,7 +169,7 @@ fun DaysApp(viewModel: DaysViewModel, activity: Activity) {
     val tabRoutes = TABS.map { it.route }.toSet()
     var timetableSection by rememberSaveable { mutableStateOf("courses") }
     var todayFocus by rememberSaveable { mutableStateOf<String?>(null) }
-    var accountOpen by rememberSaveable { mutableStateOf(false) }
+    var offeredUpdate by remember { mutableStateOf<com.yydsxwh.kemiao.days.data.remote.AppVersionDto?>(null) }
     val title = when (primary) {
         "today" -> "我的一天"
         "calendar" -> "日历"
@@ -181,6 +181,9 @@ fun DaysApp(viewModel: DaysViewModel, activity: Activity) {
         "wake" -> "好友叫醒"
         "guard" -> "位置守护"
         "health" -> "设备检查"
+        "profile" -> "个人中心"
+        "settings" -> "设置"
+        "about" -> "关于颗秒日事"
         else -> "颗秒日事"
     }
     LaunchedEffect(state.notice, state.error) {
@@ -210,8 +213,13 @@ fun DaysApp(viewModel: DaysViewModel, activity: Activity) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { accountOpen = true }) {
-                        Icon(Icons.Outlined.Cloud, contentDescription = syncLabel(state.sync))
+                    IconButton(onClick = { nav.navigate("profile") { launchSingleTop = true } }) {
+                        Avatar(state.user?.name, state.user?.avatarUrl, 32)
+                    }
+                    if (primary in tabRoutes) {
+                        IconButton(onClick = { nav.navigate("settings") { launchSingleTop = true } }) {
+                            Icon(Icons.Filled.Settings, contentDescription = "设置")
+                        }
                     }
                     IconButton(onClick = { nav.navigate("search") { launchSingleTop = true } }) {
                         Icon(Icons.Filled.Search, contentDescription = "搜索")
@@ -246,6 +254,9 @@ fun DaysApp(viewModel: DaysViewModel, activity: Activity) {
                 }
                 composable("guard") { LocationGuardScreen() }
                 composable("health") { DeviceHealthScreen() }
+                composable("profile") { ProfileScreen(state, viewModel, activity, { nav.navigate("wake") }, { nav.navigate("guard") }) }
+                composable("settings") { SettingsScreen(state, viewModel, activity, { nav.navigate("health") }, { nav.navigate("about") }) }
+                composable("about") { AboutScreen(activity) }
                 composable("days") { CountdownScreen(state, viewModel) }
                 composable("notes") { NotesScreen(state, viewModel) }
                 composable("todos") {
@@ -289,7 +300,22 @@ fun DaysApp(viewModel: DaysViewModel, activity: Activity) {
             }
         }
     }
-    if (accountOpen) AccountDialog(state, viewModel, activity) { accountOpen = false }
+    LaunchedEffect(Unit) {
+        if (!LaunchGate.applied) {
+            LaunchGate.applied = true
+            val start = com.yydsxwh.kemiao.days.data.local.AppearanceStore(activity).startPage()
+            if (start != "today") nav.navigate(start) { launchSingleTop = true }
+        }
+        val remote = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { com.yydsxwh.kemiao.days.data.remote.DaysApi(tokenProvider = { com.yydsxwh.kemiao.days.data.local.SecureSession(activity).token() }).appVersion() }.getOrNull()
+        }
+        if (remote != null && remote.latestVersionCode > com.yydsxwh.kemiao.days.BuildConfig.VERSION_CODE && !LaunchGate.updateDismissed) {
+            offeredUpdate = remote
+        }
+    }
+    offeredUpdate?.let { remote ->
+        UpdateDialog(remote, onLater = { LaunchGate.updateDismissed = true; offeredUpdate = null }, onUpdate = { installOfficialUpdate(activity, remote.downloadUrl) })
+    }
     ImportPreviewDialog(state, viewModel)
 }
 
