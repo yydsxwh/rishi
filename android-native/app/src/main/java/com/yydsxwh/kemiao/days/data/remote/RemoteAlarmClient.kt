@@ -80,6 +80,23 @@ private data class GrantList(val given: List<RemoteGrantDto> = emptyList(), val 
 @Serializable
 private data class TargetList(val targets: List<RemoteGrantDto> = emptyList())
 @Serializable
+data class PendingDeviceDto(
+    val registered: Boolean = false,
+    val platform: String = "unknown",
+    val lastSeenAt: String = "",
+    val exactAlarmPermission: String = "unknown",
+    val notificationPermission: String = "unknown",
+    val nativeAlarm: String = "NOT_APPLICABLE",
+)
+
+@Serializable
+data class PendingAlarmsDto(
+    val cursor: String = "",
+    val alarms: List<RemoteAlarmDto> = emptyList(),
+    val device: PendingDeviceDto = PendingDeviceDto(),
+)
+
+@Serializable
 private data class AlarmList(val alarms: List<RemoteAlarmDto> = emptyList())
 @Serializable
 private data class AuditList(val events: List<AuditDto> = emptyList())
@@ -129,6 +146,7 @@ class RemoteAlarmClient(
     }
     fun targets(): List<RemoteGrantDto> = decode<TargetList>(request("/api/days/remote-alarm/allowed-targets")).targets
     fun alarms(role: String): List<RemoteAlarmDto> = decode<AlarmList>(request("/api/days/remote-alarm/alarms?role=$role")).alarms
+    fun pending(): PendingAlarmsDto = decode(request("/api/days/remote-alarm/pending"))
     fun audit(): List<AuditDto> = decode<AuditList>(request("/api/days/remote-alarm/audit")).events
     fun settings(): OwnerSettingsDto = decode<SettingsBody>(request("/api/days/remote-alarm/settings")).settings
     fun contacts(query: String): Pair<List<ContactDto>, String> {

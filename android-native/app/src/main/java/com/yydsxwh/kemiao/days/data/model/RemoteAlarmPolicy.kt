@@ -38,6 +38,13 @@ object RemoteAlarmPolicy {
         return nowMillis <= triggerAtMillis + RING_GRACE_MS
     }
 
+    /** 实时守护短轮询。成功回到 20 秒，失败 20 → 40 → 60 秒后停住。 */
+    fun nextPollDelay(previousMs: Long, failed: Boolean): Long {
+        if (!failed) return 20_000L
+        val base = if (previousMs < 20_000L) 20_000L else previousMs
+        return (base * 2).coerceAtMost(60_000L)
+    }
+
     fun describeTrigger(iso: String, savedZone: String, deviceZone: ZoneId = ZoneId.systemDefault()): String {
         val instant = Instant.parse(iso)
         val local = clock.format(instant.atZone(deviceZone))

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { daysFetch } from '../lib/days-api'
+import { maskEmail } from '../lib/remote-alarm'
 import { ACCOUNT_CENTER_URL, avatarInitial, loginUrl, logoutUrl } from '../lib/site-session'
 import { clearNativeSession, startNativeLogin } from '../lib/native-auth'
 import { isNativeApp } from '../lib/native'
@@ -125,7 +126,9 @@ export default function AccountCenter({ sync, data }: { sync: CloudSync; data: A
             )}
             <div>
               <strong>{user.name}</strong>
-              <p className="muted">统一账号 · 颗秒日事</p>
+              <p className="muted">账号 {user.sub}</p>
+              <p className="muted">{maskEmail(user.email)}</p>
+              <p className="muted">KK号、手机号：账号中心这次登录没有带回</p>
             </div>
           </header>
 

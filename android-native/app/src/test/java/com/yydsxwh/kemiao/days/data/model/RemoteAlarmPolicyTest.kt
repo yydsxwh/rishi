@@ -29,6 +29,14 @@ class RemoteAlarmPolicyTest {
     }
 
     @Test
+    fun pollBackoffResetsAfterSuccessAndCapsAtOneMinute() {
+        assertEquals(20_000L, RemoteAlarmPolicy.nextPollDelay(60_000L, false))
+        assertEquals(40_000L, RemoteAlarmPolicy.nextPollDelay(20_000L, true))
+        assertEquals(60_000L, RemoteAlarmPolicy.nextPollDelay(40_000L, true))
+        assertEquals(60_000L, RemoteAlarmPolicy.nextPollDelay(60_000L, true))
+    }
+
+    @Test
     fun bootRestoresFutureAlarmsAndDropsExpiredOnes() {
         val trigger = RemoteAlarmPolicy.triggerMillis("2026-10-08T02:30:00Z")
         assertEquals("restore", RemoteAlarmPolicy.bootAction("DEVICE_SCHEDULED", trigger, trigger - 60_000))

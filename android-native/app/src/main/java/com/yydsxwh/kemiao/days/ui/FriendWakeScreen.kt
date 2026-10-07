@@ -23,8 +23,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,6 +41,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.yydsxwh.kemiao.days.data.local.AppearanceStore
 import com.yydsxwh.kemiao.days.data.local.SecureSession
 import com.yydsxwh.kemiao.days.data.model.AppData
 import com.yydsxwh.kemiao.days.data.model.RemoteAlarmPolicy
@@ -48,6 +51,8 @@ import com.yydsxwh.kemiao.days.data.remote.RemoteAlarmDto
 import com.yydsxwh.kemiao.days.data.remote.RemoteAlarmException
 import com.yydsxwh.kemiao.days.data.remote.RemoteGrantDto
 import com.yydsxwh.kemiao.days.notify.ReminderScheduler
+import com.yydsxwh.kemiao.days.notify.RemoteAlarmSync
+import com.yydsxwh.kemiao.days.notify.WakeGuardService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -163,7 +168,7 @@ class FriendWakeViewModel(app: Application) : AndroidViewModel(app) {
             }
             withContext(Dispatchers.Main) {
                 result.onSuccess { alarm ->
-                    val text = if (alarm.deviceReady) "对方手机已成功设置闹钟" else "已发送，等待对方手机注册闹钟"
+                    val text = statusText(alarm.status, alarm.deviceReady)
                     _state.update { it.copy(notice = text) }
                     refresh(data)
                 }.onFailure { error -> _state.update { it.copy(error = messageOf(error)) } }
@@ -296,7 +301,16 @@ fun FriendWakeScreen(
                 TextButton(onClick = onOpenHealth) { Text("设备检查") }
             }
         }
+        item { WakeGuardCard(context) }
         item { HealthCard(context) }
+        item {
+            TextButton(onClick = {
+                Thread {
+                    runCatching { RemoteAlarmSync(context).pullAndSchedule() }
+                }.start()
+                model.refresh(data)
+            }) { Text("立即检查好友闹钟") }
+        }
         item { LimitCard(state.settings, data, model) }
         item { GrantCard(state, data, model) }
         item { SendCard(state, data, model) }
@@ -329,7 +343,9 @@ private fun HealthCard(context: Context) {
             Text(if (exact) "精确闹钟已开启" else "精确闹钟未开启。未开启时不会显示成已设置到手机。")
             Text(if (fullScreen) "锁屏全屏提醒可用" else "系统不允许全屏闹钟，到点仍会响铃，但可能只显示通知")
             Text(if (battery) "已忽略电池优化" else "电池优化可能推迟后台同步")
-            Text("推送要等站长配置 Firebase 后才能在应用完全退出时立刻送达。现在会在打开应用和大约每 15 分钟的后台同步里登记闹钟。")
+            Text("当前未配置厂商 Push。开启「好友叫醒实时守护」后会显示常驻通知并及时拉取；未开启时仍会在打开 App、回到前台和大约每 15 分钟的后台同步里检查。")
+            val note = AppearanceStore(context).wakeGuardNote()
+            if (note.isNotBlank()) Text(note)
             Text("小米、OPPO、vivo、荣耀、三星请在系统里允许日事后台运行。应用不能绕过厂商限制。", style = MaterialTheme.typography.bodySmall)
             if (!exact) TextButton(onClick = {
                 context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
@@ -559,12 +575,43 @@ private fun AlarmList(title: String, alarms: List<RemoteAlarmDto>, data: AppData
     }
 }
 
+@Composable
+private fun WakeGuardCard(context: Context) {
+    val appearance = AppearanceStore(context)
+    var enabled by rememberSaveable { mutableStateOf(appearance.wakeGuard()) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("好友叫醒实时守护", style = MaterialTheme.typography.titleMedium)
+                }
+                Switch(enabled, { checked ->
+                    enabled = checked
+                    appearance.setWakeGuard(checked)
+                    if (checked) {
+                        runCatching { WakeGuardService.start(context) }
+                            .onFailure { appearance.setWakeGuardNote("系统没有允许启动好友叫醒实时守护") }
+                    } else {
+                        appearance.setWakeGuardNote("")
+                        runCatching { WakeGuardService.stop(context) }
+                    }
+                })
+            }
+            Text("开启后，颗秒日事会在后台保持好友叫醒连接，以便及时接收好友设置的闹钟。系统会显示常驻通知，可随时关闭。")
+            val note = appearance.wakeGuardNote()
+            if (note.isNotBlank()) Text(note)
+        }
+    }
+}
+
 private fun statusText(status: String, deviceReady: Boolean): String = when {
     deviceReady && status == "FIRED" -> "已响铃"
-    deviceReady -> "对方手机已成功设置闹钟"
-    status == "MISSED" -> "错过了，没有补响"
+    status == "DEVICE_SCHEDULED" || deviceReady -> "对方手机已成功设置"
+    status == "DELIVERED" -> "已同步到设备"
+    status == "CREATED" -> "服务端已保存"
+    status == "MISSED" -> "已过期"
     status == "CANCELLED" -> "已取消"
-    status == "FAILED" -> "手机没能登记闹钟"
-    status == "EXPIRED" -> "授权已失效"
-    else -> "已发送，等待对方手机注册闹钟"
+    status == "FAILED" -> "失败"
+    status == "EXPIRED" -> "已过期"
+    else -> "等待设备"
 }

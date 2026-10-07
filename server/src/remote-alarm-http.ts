@@ -9,6 +9,7 @@ import {
   createGrant,
   getSettings,
   listAlarms,
+  listPending,
   deviceStatusFor,
   listAllowedTargets,
   listAudit,
@@ -106,6 +107,10 @@ export async function handleRemoteAlarmRoutes(req: IncomingMessage, res: ServerR
     }
     if (section === 'contacts' && req.method === 'GET') {
       sendJson(res, 200, await searchContacts(config, actor, url.searchParams.get('q') || ''))
+      return true
+    }
+    if (section === 'pending' && req.method === 'GET') {
+      sendJson(res, 200, await listPending(config, actor))
       return true
     }
     if (section === 'alarms' && !id && req.method === 'GET') {

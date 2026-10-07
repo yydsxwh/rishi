@@ -80,7 +80,8 @@ test('版本接口缺省不会把最低版本抬到最新版', () => {
     RISHI_SESSION_SECRET: 'test-secret-test-secret-test-secret',
   })
   const version = androidVersion(config, {})
-  assert.equal(version.latestVersionCode, 20)
+  assert.equal(version.latestVersionCode, 21)
+  assert.equal(version.latestVersionName, '2.6.1')
   assert.equal(version.minSupportedVersionCode, 0)
   assert.equal(version.forceUpdate, false)
   assert.equal(version.downloadUrl, 'https://www.yydsxwh.com/products/days/kemiao-days.apk')

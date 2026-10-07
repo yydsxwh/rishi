@@ -5,6 +5,7 @@ import Notes from './components/Notes'
 import Timetable from './components/Timetable'
 import Today from './components/Today'
 import AccountCenter from './components/AccountCenter'
+import DaysSettings from './components/DaysSettings'
 import { AndroidDownloadNote } from './components/AndroidDownloadNote'
 import AdminIntegrations from './components/AdminIntegrations'
 import { useAppStore } from './hooks/useAppStore'
@@ -188,6 +189,7 @@ export default function App() {
               </div>
             )}
           </div>
+          <DaysSettings />
           <AccountCenter sync={sync} data={store.data} />
         </div>
         <input
