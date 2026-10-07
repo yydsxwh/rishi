@@ -29,6 +29,7 @@ import {
   weekStartForTeachingWeek,
 } from '../lib/week-grid'
 import { EXAM_KIND_LABEL, type Course, type Exam, type ExamKind } from '../types'
+import FriendWake from './FriendWake'
 import ScheduleSettings from './ScheduleSettings'
 import WeekTimetable from './WeekTimetable'
 
@@ -943,6 +944,7 @@ export default function Schedule({
         </>
       )}
 
+      {tab === 'remind' && <FriendWake store={store} />}
       {tab === 'remind' && <HolidaySettingsCard store={store} />}
       {tab === 'remind' && <HolidayBoards store={store} mode="remind" />}
       {tab === 'remind' && (

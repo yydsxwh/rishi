@@ -13,12 +13,16 @@ android {
         applicationId = "com.yydsxwh.kemiao.days"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "2.3.4"
+        versionCode = 18
+        versionName = "2.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
-        buildConfigField("String", "DAYS_API_ORIGIN", "\"https://www.yydsxwh.com\"")
-        buildConfigField("String", "LOGIN_URL", "\"https://www.yydsxwh.com/api/days/auth/login?native=1\"")
+        // 临时应急默认走香港 xiaowenhua.net。恢复吉隆坡后只改 RISHI_API_BASE_URL / RISHI_LOGIN_URL。
+        // 登录回调如果必须用账号中心已登记的地址，单独设置 RISHI_LOGIN_URL，不要改业务代码。
+        val rishiApiBase = (System.getenv("RISHI_API_BASE_URL") ?: "https://xiaowenhua.net/kemiao-days-api").trim().trimEnd('/')
+        val rishiLoginUrl = System.getenv("RISHI_LOGIN_URL") ?: "$rishiApiBase/api/days/auth/login?native=1"
+        buildConfigField("String", "DAYS_API_ORIGIN", "\"$rishiApiBase\"")
+        buildConfigField("String", "LOGIN_URL", "\"$rishiLoginUrl\"")
         buildConfigField("String", "HANDOFF_SCHEME", "\"kemiao-days\"")
     }
 

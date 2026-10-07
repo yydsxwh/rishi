@@ -9,6 +9,7 @@ import androidx.work.WorkerParameters
 import com.yydsxwh.kemiao.days.data.local.LocalStore
 import com.yydsxwh.kemiao.days.data.local.SecureSession
 import com.yydsxwh.kemiao.days.data.remote.DaysApi
+import com.yydsxwh.kemiao.days.notify.RemoteAlarmSync
 import java.util.concurrent.TimeUnit
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
@@ -20,6 +21,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val result = engine.reconcile(store.load(), store.version())
         if (result.data != null) store.save(result.data)
         if (result.version != null) store.saveVersion(result.version)
+        runCatching { RemoteAlarmSync(applicationContext).pullAndSchedule() }
         return if (result.state == SyncState.Error || result.state == SyncState.Offline) Result.retry() else Result.success()
     }
 
