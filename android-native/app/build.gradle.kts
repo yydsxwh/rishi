@@ -13,13 +13,13 @@ android {
         applicationId = "com.yydsxwh.kemiao.days"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "2.4.0"
+        versionCode = 19
+        versionName = "2.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
-        // 临时应急默认走香港 xiaowenhua.net。恢复吉隆坡后只改 RISHI_API_BASE_URL / RISHI_LOGIN_URL。
-        // 登录回调如果必须用账号中心已登记的地址，单独设置 RISHI_LOGIN_URL，不要改业务代码。
-        val rishiApiBase = (System.getenv("RISHI_API_BASE_URL") ?: "https://xiaowenhua.net/kemiao-days-api").trim().trimEnd('/')
+        // 正式包默认走吉隆坡 www.yydsxwh.com。香港应急包用
+        // RISHI_API_BASE_URL=https://xiaowenhua.net/kemiao-days-api 单独打，不要改业务代码。
+        val rishiApiBase = (System.getenv("RISHI_API_BASE_URL") ?: "https://www.yydsxwh.com").trim().trimEnd('/')
         val rishiLoginUrl = System.getenv("RISHI_LOGIN_URL") ?: "$rishiApiBase/api/days/auth/login?native=1"
         buildConfigField("String", "DAYS_API_ORIGIN", "\"$rishiApiBase\"")
         buildConfigField("String", "LOGIN_URL", "\"$rishiLoginUrl\"")
@@ -86,6 +86,19 @@ android {
     }
 }
 
+val googleServices = file("google-services.json")
+if (googleServices.exists()) {
+    val generatedAssets = layout.buildDirectory.dir("generated/firebase-assets")
+    val copyGoogleServices = tasks.register<Copy>("copyGoogleServices") {
+        from(googleServices)
+        into(generatedAssets)
+    }
+    android.sourceSets.named("main") {
+        assets.srcDir(generatedAssets)
+    }
+    tasks.named("preBuild").configure { dependsOn(copyGoogleServices) }
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
@@ -108,6 +121,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

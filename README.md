@@ -76,7 +76,7 @@ npx --yes tsx src/lib/timetable-import.selftest.ts
 - `GET/POST /api/days/remote-alarm/alarms`
 - `POST /api/days/devices`
 
-Android 的接口地址来自构建环境 `RISHI_API_BASE_URL`，登录地址可用 `RISHI_LOGIN_URL` 单独覆盖。本次临时应急默认是 `https://xiaowenhua.net/kemiao-days-api`。这是香港服务器上的隔离路径，不是长期下载中心。恢复吉隆坡后改这两个变量并重新发包，业务代码不用跟着改。长期发布仍走 Platform Releases。
+Android 的接口地址来自构建环境 `RISHI_API_BASE_URL`，登录地址可用 `RISHI_LOGIN_URL` 单独覆盖。正式包默认 `https://www.yydsxwh.com`。香港应急仍可用 `RISHI_API_BASE_URL=https://xiaowenhua.net/kemiao-days-api` 另打一版，不替换吉隆坡下载。
 
 推送是可选的。配置了下面三个环境变量才会发 FCM data message，消息里只有「去同步」，闹钟内容仍要登录后拉取：
 
@@ -93,8 +93,31 @@ Android 的接口地址来自构建环境 `RISHI_API_BASE_URL`，登录地址可
 
 没有目录时，授权人填写对方的 `usr_` 账号 ID。这不会建立另一套好友库。
 
+## 位置守护
+
+位置授权和闹钟授权分开保存。同一个人可以只有其中一项。有效期可以是一段时间、永久，或跟随某个待办 / 日程 / 考试，两边的时间互不影响。
+
+查看位置只返回当前或最近一个点、更新时间、精度和来源。不返回日程、待办或历史轨迹。模糊位置由服务端把坐标收到约 1 公里，不靠前端藏起来。每次查看会记一条审计，审计里不写经纬度。
+
+本人可以暂停全部位置共享。实时守护只在 Android 上、用户明确打开后才会前台定位，通知里可以马上停止。
+
+选人有两条路：KKChat 最近私聊，或输入账号 / KK号 / 邮箱 / 手机号。解析由账号中心完成，日事只保存 `usr_`。查找成功后必须再点一次确认才会授权。不是 KKChat 好友也可以授权。
+
+相关环境变量：
+
+- `ACCOUNT_RESOLVE_URL`：默认从 `ACCOUNT_ISSUER` 推导为 `/api/internal/users/resolve-identifier`
+- `ACCOUNT_INTERNAL_TOKEN`
+- `KKCHAT_API_URL`
+- `KKCHAT_SERVICE_TOKEN`
+- `GEO_UPSTREAM_URL`：地图瓦片和反查的上游，默认 `https://www.yydsxwh.com`
+
+账号中心需要同时允许这两条回调，密钥不轮换：
+
+- `https://www.yydsxwh.com/api/days/auth/callback`
+- `https://xiaowenhua.net/kemiao-days-api/api/days/auth/callback`
+
+iPhone 的远程系统闹钟尚未在真机验证，界面不会写成已支持。
+
 正式包版本写在 `android-native/app/build.gradle.kts`。签名只用已有的 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，构建结束删除临时 keystore。应急下载地址是 `https://xiaowenhua.net/downloads/rishi/kemiao-days.apk`，版本归档是同目录的 `kemiao-days-v<version>.apk`。上传先写临时文件，校验 SHA-256 后再改名。
 
-`www.yydsxwh.com` 的 DNS 已经指向吉隆坡。这次没有吉隆坡登录密钥，所以没有改吉隆坡。香港 BFF 的登录回调改成了 `https://xiaowenhua.net/kemiao-days-api/api/days/auth/callback`，这样状态 cookie 和回调在同一个域名。账号中心目前还没有登记这个地址。站长需要在账号中心「软件产品」里给 client `rishi` 增加这一条回调，登录才会通过。登记之前，新 APK 的登录会被账号中心拒绝，提示「回调地址未登记」。
-
-恢复吉隆坡之后，把 `ACCOUNT_REDIRECT_URI` 和日事后台里保存的 Account 回调改回 `https://www.yydsxwh.com/api/days/auth/callback`，再把 `RISHI_API_BASE_URL` 指回正式入口并重新发包。香港上的 `integrations.enc.bak-remote-alarm` 是改回调前的备份。
+正式环境在吉隆坡。`ACCOUNT_REDIRECT_URI` 用 `https://www.yydsxwh.com/api/days/auth/callback`。账号中心的 `rishi` 客户端同时保留香港回调 `https://xiaowenhua.net/kemiao-days-api/api/days/auth/callback`，密钥不轮换。香港上的应急 API 和 APK 继续留着，不覆盖。

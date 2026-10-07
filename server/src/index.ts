@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { handleAccountProbe, handleAdminMe, handleIntegrations, handlePlatformProbe, handleProductApis } from './integrations'
+import { resolveConfigured } from './account-resolve'
 import { fcmConfigured, loadConfig, oidcConfigured, platformConfigured, type DaysConfig } from './config'
+import { handleGuardianRoutes } from './guardian-http'
 import { MAX_OCR_FILE_BYTES, OcrError, recognizeWithPlatform, type OcrKind } from './ai-ocr'
 import { consumeHandoff, issueHandoff } from './handoff'
 import {
@@ -388,7 +390,10 @@ export function createDaysServer(config: DaysConfig) {
           oidc: oidcConfigured(config),
           platform: platformConfigured(config),
           remoteAlarm: true,
+          location: true,
           fcm: fcmConfigured(config),
+          accountResolve: resolveConfigured(config),
+          kkchatContacts: Boolean(config.kkchatApiUrl && config.kkchatServiceToken),
         })
         return
       }
@@ -414,6 +419,7 @@ export function createDaysServer(config: DaysConfig) {
         return void (await handleProductApis(req, res, url, config))
       }
       if (await handleRemoteAlarmRoutes(req, res, url, config)) return
+      if (await handleGuardianRoutes(req, res, url, config)) return
       sendJson(res, 404, { error: 'not_found' })
     } catch (error) {
       if (error instanceof Error && error.message === 'TOO_LARGE') {

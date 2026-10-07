@@ -9,6 +9,7 @@ import {
   createGrant,
   getSettings,
   listAlarms,
+  deviceStatusFor,
   listAllowedTargets,
   listAudit,
   listGrants,
@@ -64,6 +65,10 @@ export async function handleRemoteAlarmRoutes(req: IncomingMessage, res: ServerR
     // /api/days/remote-alarm/... or /api/days/devices/:id
     if (deviceApi) {
       const id = parts[4]
+      if (id === 'status' && req.method === 'GET') {
+        sendJson(res, 200, { device: await deviceStatusFor(config, actor, url.searchParams.get('userId') || actor.sub) })
+        return true
+      }
       if (!id && req.method === 'POST') {
         sendJson(res, 200, { device: await registerDevice(config, actor, body as { id?: string; platform?: string; pushToken?: string; appVersion?: string }) })
         return true

@@ -23,8 +23,11 @@ import {
   isAccountSub,
   isTimeZone,
 } from './remote-alarm-domain'
+import { normalizeCapabilities, publicDeviceStatus } from './device-status'
 import { wakeOwnerDevices } from './remote-alarm-push'
-import { readAlarmDb, withAlarmDb, type AuditEvent, type UserDevice } from './remote-alarm-store'
+import { readLocationDb } from './location-store'
+import { readAlarmDb, withAlarmDb, type AuditEvent, type DevicePlatform, type UserDevice } from './remote-alarm-store'
+import { assertKnownAccount } from './account-resolve'
 
 export type Actor = { sub: string; name: string }
 
@@ -136,6 +139,7 @@ export async function createGrant(config: DaysConfig, actor: Actor, input: Grant
   if (!isAccountSub(granteeUserId) || granteeUserId === actor.sub) {
     deny('REMOTE_ALARM_NOT_AUTHORIZED', 400, '请选择另一个账号')
   }
+  await assertKnownAccount(config, granteeUserId)
   if (!input.scope || !SCOPES.has(input.scope)) deny('REMOTE_ALARM_OUT_OF_SCOPE', 400, '授权类型无效')
   const nowIso = now.toISOString()
   const grant = await withAlarmDb(config, (db) => {
@@ -292,7 +296,12 @@ export async function listAllowedTargets(config: DaysConfig, actor: Actor, now =
     .filter((grant) => grant.granteeUserId === actor.sub)
     .map((grant) => {
       const reason = grantBlockReason(grant, nowMs, prefsOf(db.prefs, grant.ownerUserId))
-      return { ...granteeView(grant), canCreate: reason == null && grant.permissions.createAlarm, blockReason: reason }
+      return {
+        ...granteeView(grant),
+        canCreate: reason == null && grant.permissions.createAlarm,
+        blockReason: reason,
+        device: publicDeviceStatus(db.devices.filter((device) => device.userId === grant.ownerUserId)),
+      }
     })
     .filter((grant) => grant.status !== 'REVOKED')
 }
@@ -512,31 +521,69 @@ export async function listAudit(config: DaysConfig, actor: Actor) {
   return db.audit.filter((event) => event.ownerUserId === actor.sub || event.actorUserId === actor.sub).slice(-200).reverse()
 }
 
-export async function registerDevice(config: DaysConfig, actor: Actor, input: { id?: string; platform?: string; pushToken?: string; appVersion?: string }) {
-  if (input.platform !== 'android') deny('REMOTE_ALARM_OUT_OF_SCOPE', 400, '目前只登记 Android 设备')
+export async function registerDevice(config: DaysConfig, actor: Actor, input: { id?: string; platform?: string; pushToken?: string; appVersion?: string; capabilities?: unknown }) {
+  const platform: DevicePlatform | '' = input.platform === 'android' || input.platform === 'ios' || input.platform === 'web' ? input.platform : ''
+  if (!platform) deny('REMOTE_ALARM_OUT_OF_SCOPE', 400, '设备平台无效')
+  const capabilities = normalizeCapabilities(platform, input.capabilities)
   const nowIso = new Date().toISOString()
   return withAlarmDb(config, (db) => {
     const token = cleanText(input.pushToken, 4096)
+    if (token) {
+      for (const device of db.devices) {
+        if (device.pushToken === token && device.userId !== actor.sub) {
+          device.pushToken = ''
+          device.enabled = false
+        }
+      }
+    }
     const existing = db.devices.find((device) => device.userId === actor.sub && (device.id === input.id || (token && device.pushToken === token)))
     if (existing) {
+      existing.platform = platform
       existing.pushToken = token
       existing.appVersion = cleanText(input.appVersion, 40)
       existing.lastSeenAt = nowIso
       existing.enabled = true
-      return { id: existing.id, platform: existing.platform, appVersion: existing.appVersion, lastSeenAt: existing.lastSeenAt, enabled: existing.enabled, hasToken: Boolean(existing.pushToken) }
+      existing.capabilities = capabilities
+      return publicDevice(existing)
     }
     const device: UserDevice = {
       id: `dv_${randomToken(10)}`,
       userId: actor.sub,
-      platform: 'android',
+      platform,
       pushToken: token,
       appVersion: cleanText(input.appVersion, 40),
       lastSeenAt: nowIso,
       enabled: true,
+      capabilities,
     }
     db.devices.push(device)
-    return { id: device.id, platform: device.platform, appVersion: device.appVersion, lastSeenAt: device.lastSeenAt, enabled: true, hasToken: Boolean(token) }
+    return publicDevice(device)
   })
+}
+
+function publicDevice(device: UserDevice) {
+  return {
+    id: device.id,
+    platform: device.platform,
+    appVersion: device.appVersion,
+    lastSeenAt: device.lastSeenAt,
+    enabled: device.enabled,
+    hasToken: Boolean(device.pushToken),
+    capabilities: publicDeviceStatus([device]),
+  }
+}
+
+export async function deviceStatusFor(config: DaysConfig, actor: Actor, userId: string) {
+  const target = cleanText(userId, 84)
+  if (!isAccountSub(target)) deny('REMOTE_ALARM_NOT_AUTHORIZED', 400, '账号无效')
+  const db = await readAlarmDb(config)
+  if (target !== actor.sub) {
+    const alarmOk = db.grants.some((grant) => grant.ownerUserId === target && grant.granteeUserId === actor.sub && grant.status !== 'REVOKED')
+    const locationDb = await readLocationDb(config)
+    const locationOk = locationDb.grants.some((grant) => grant.ownerUserId === target && grant.granteeUserId === actor.sub && grant.status !== 'REVOKED')
+    if (!alarmOk && !locationOk) deny('REMOTE_ALARM_NOT_AUTHORIZED', 403, '对方没有向你公开设备状态')
+  }
+  return publicDeviceStatus(db.devices.filter((device) => device.userId === target))
 }
 
 export async function removeDevice(config: DaysConfig, actor: Actor, id: string) {

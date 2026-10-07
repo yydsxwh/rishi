@@ -2,7 +2,7 @@ import { importPKCS8, SignJWT } from 'jose'
 import type { DaysConfig } from './config'
 import { fcmConfigured } from './config'
 import { log } from './http'
-import { readAlarmDb, type UserDevice } from './remote-alarm-store'
+import { readAlarmDb, withAlarmDb, type UserDevice } from './remote-alarm-store'
 
 let cachedToken: { value: string; exp: number } | null = null
 
@@ -65,9 +65,25 @@ async function sendData(config: DaysConfig, token: string, device: UserDevice): 
       signal: AbortSignal.timeout(8000),
     })
     if (!response.ok) {
+      const detail = await response.text().catch(() => '')
+      if (response.status === 404 || response.status === 410 || detail.includes('UNREGISTERED')) {
+        await withAlarmDb(config, (db) => {
+          for (const row of db.devices) {
+            if (row.pushToken === device.pushToken) {
+              row.pushToken = ''
+              row.enabled = false
+              if (row.capabilities) row.capabilities.push.ready = false
+            }
+          }
+        })
+      }
       log('warn', 'remote alarm push failed', { deviceId: device.id, status: response.status })
       return false
     }
+    await withAlarmDb(config, (db) => {
+      const row = db.devices.find((item) => item.id === device.id)
+      if (row?.capabilities) row.capabilities.push.lastPushAt = new Date().toISOString()
+    })
     return true
   } catch (error) {
     log('warn', 'remote alarm push failed', { deviceId: device.id, reason: error instanceof Error ? error.message : 'error' })

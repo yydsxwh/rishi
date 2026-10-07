@@ -15,14 +15,45 @@ export type AuditEvent = {
   summary: string
 }
 
+export type DevicePlatform = 'android' | 'ios' | 'web'
+export type PermissionLevel = 'granted' | 'denied' | 'unknown'
+export type NativeAlarmSupport = 'SUPPORTED' | 'UNSUPPORTED' | 'NOT_VERIFIED' | 'NOT_APPLICABLE'
+
+export type DeviceCapabilities = {
+  osVersion: string
+  manufacturer: string
+  model: string
+  remoteAlarm: {
+    supported: boolean
+    exactAlarmPermission: PermissionLevel
+    notificationPermission: PermissionLevel
+    batteryRestricted: boolean
+    lastScheduledAt?: string
+  }
+  location: {
+    foregroundPermission: PermissionLevel
+    backgroundPermission: PermissionLevel
+    precise: boolean
+    sharingEnabled: boolean
+    lastLocationAt?: string
+  }
+  push: {
+    ready: boolean
+    lastTokenAt?: string
+    lastPushAt?: string
+  }
+  nativeAlarm: NativeAlarmSupport
+}
+
 export type UserDevice = {
   id: string
   userId: string
-  platform: 'android'
+  platform: DevicePlatform
   pushToken: string
   appVersion: string
   lastSeenAt: string
   enabled: boolean
+  capabilities?: DeviceCapabilities
 }
 
 export type AlarmDb = {

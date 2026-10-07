@@ -96,6 +96,21 @@ private data class DeviceBody(val device: DeviceEcho)
 @Serializable
 private data class DeviceEcho(val id: String = "", val hasToken: Boolean = false)
 @Serializable
+data class ResolvedAccountDto(
+    val userSub: String = "",
+    val displayName: String = "",
+    val matchedBy: String = "",
+    val maskedIdentifier: String = "",
+    val accountName: String = "",
+    val kkNumberMasked: String = "",
+)
+@Serializable
+data class RecentContactDto(val sub: String = "", val displayName: String = "", val username: String? = null, val kkNumber: Long? = null)
+@Serializable
+private data class ResolveBody(val account: ResolvedAccountDto = ResolvedAccountDto())
+@Serializable
+private data class RecentList(val contacts: List<RecentContactDto> = emptyList(), val source: String = "")
+@Serializable
 private data class ApiError(val error: String = "", val message: String = "")
 
 class RemoteAlarmClient(
@@ -164,11 +179,17 @@ class RemoteAlarmClient(
         request("/api/days/remote-alarm/resume", "POST", "{}")
     }
 
-    fun registerDevice(deviceId: String?, appVersion: String): String {
-        val idField = if (deviceId.isNullOrBlank()) "" else ""","id":${DaysJson.encodeToString(kotlinx.serialization.serializer<String>(), deviceId)}"""
-        val body = """{"platform":"android","appVersion":${DaysJson.encodeToString(kotlinx.serialization.serializer<String>(), appVersion)},"pushToken":""$idField}"""
+    fun registerDevice(deviceId: String?, appVersion: String, pushToken: String = "", capabilitiesJson: String = "{}"): String {
+        val idField = if (deviceId.isNullOrBlank()) "" else ""","id":${q(deviceId)}"""
+        val body = """{"platform":"android","appVersion":${q(appVersion)},"pushToken":${q(pushToken)},"capabilities":$capabilitiesJson$idField}"""
         return decode<DeviceBody>(request("/api/days/devices", "POST", body)).device.id
     }
+
+    fun resolveAccount(identifier: String): ResolvedAccountDto {
+        return decode<ResolveBody>(request("/api/days/account/resolve", "POST", """{"identifier":${q(identifier)}}""")).account
+    }
+
+    fun recentContacts(): List<RecentContactDto> = decode<RecentList>(request("/api/days/contacts/kkchat")).contacts
 
     private fun q(value: String) = DaysJson.encodeToString(kotlinx.serialization.serializer<String>(), value)
 

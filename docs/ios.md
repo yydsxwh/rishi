@@ -1,5 +1,11 @@
 # 颗秒日事 iOS 客户端
 
+## 远程闹钟与位置
+
+服务端协议不绑死 Android。iPhone 若以后接入，定位走 Core Location，闹钟必须用系统闹钟，不能用普通通知冒充。
+
+当前状态：`NOT_VERIFIED`。没有在 iPhone 上验证远程系统闹钟，产品界面不得写成已经支持。
+
 ## 当前方案
 
 iOS 客户端采用 Capacitor 8，将现有 React/Vite 产品作为本地 Web 资源打包进原生 iOS 壳，App ID 为 `com.yydsxwh.kemiao.days`，名称为「颗秒日事」。现有日历、待办、课程表、考试时间表、倒数日和便签功能继续复用同一套前端代码。

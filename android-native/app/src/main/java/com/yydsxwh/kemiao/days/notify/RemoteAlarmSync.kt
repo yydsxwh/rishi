@@ -1,7 +1,6 @@
 package com.yydsxwh.kemiao.days.notify
 
 import android.content.Context
-import com.yydsxwh.kemiao.days.BuildConfig
 import com.yydsxwh.kemiao.days.data.local.LocalRemoteAlarm
 import com.yydsxwh.kemiao.days.data.local.RemoteAlarmStore
 import com.yydsxwh.kemiao.days.data.local.SecureSession
@@ -18,8 +17,7 @@ class RemoteAlarmSync(private val context: Context) {
         val token = SecureSession(context).token()
         if (token.isNullOrBlank()) return
         val client = RemoteAlarmClient(tokenProvider = { token })
-        val deviceId = client.registerDevice(store.deviceId(), BuildConfig.VERSION_NAME)
-        if (deviceId.isNotBlank()) store.saveDeviceId(deviceId)
+        runCatching { com.yydsxwh.kemiao.days.location.DeviceRegistrar.refresh(context) }
         val incoming = client.alarms("incoming")
         val now = System.currentTimeMillis()
         val kept = store.load().associateBy { it.remoteAlarmId }.toMutableMap()
