@@ -44,6 +44,8 @@ android {
                 storePassword = keystorePassword!!
                 this.keyAlias = keyAlias!!
                 this.keyPassword = keyPassword!!
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
