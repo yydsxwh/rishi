@@ -36,14 +36,16 @@ class WakeGuardService : Service() {
     private var foreground = false
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
-    private val tick = Runnable {
+    private val tick: Runnable = Runnable { onTick() }
+
+    private fun onTick() {
         if (!AppearanceStore(this).wakeGuard()) {
             stopGuard()
-            return@Runnable
+            return
         }
         if (polling) {
             workerHandler?.postDelayed(tick, delayMs)
-            return@Runnable
+            return
         }
         polling = true
         val failed = !pollOnce()
