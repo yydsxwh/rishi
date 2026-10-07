@@ -179,9 +179,17 @@ class RemoteAlarmClient(
         request("/api/days/remote-alarm/resume", "POST", "{}")
     }
 
-    fun registerDevice(deviceId: String?, appVersion: String, pushToken: String = "", capabilitiesJson: String = "{}"): String {
+    fun registerDevice(
+        deviceId: String?,
+        appVersion: String,
+        pushToken: String = "",
+        capabilitiesJson: String = "{}",
+        pushProvider: String = "none",
+        gmsAvailable: Boolean = false,
+        region: String = "unknown",
+    ): String {
         val idField = if (deviceId.isNullOrBlank()) "" else ""","id":${q(deviceId)}"""
-        val body = """{"platform":"android","appVersion":${q(appVersion)},"pushToken":${q(pushToken)},"capabilities":$capabilitiesJson$idField}"""
+        val body = """{"platform":"android","appVersion":${q(appVersion)},"pushToken":${q(pushToken)},"pushProvider":${q(pushProvider)},"gmsAvailable":$gmsAvailable,"region":${q(region)},"capabilities":$capabilitiesJson$idField}"""
         return decode<DeviceBody>(request("/api/days/devices", "POST", body)).device.id
     }
 

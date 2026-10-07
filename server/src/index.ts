@@ -1,7 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { handleAccountProbe, handleAdminMe, handleIntegrations, handlePlatformProbe, handleProductApis } from './integrations'
 import { resolveConfigured } from './account-resolve'
-import { fcmConfigured, loadConfig, oidcConfigured, platformConfigured, type DaysConfig } from './config'
+import { androidVersion, iosVersion } from './app-version'
+import { loadConfig, oidcConfigured, platformConfigured, type DaysConfig } from './config'
+import { pushProviderHealth, pushReady } from './push-config'
 import { handleGuardianRoutes } from './guardian-http'
 import { MAX_OCR_FILE_BYTES, OcrError, recognizeWithPlatform, type OcrKind } from './ai-ocr'
 import { consumeHandoff, issueHandoff } from './handoff'
@@ -391,10 +393,16 @@ export function createDaysServer(config: DaysConfig) {
           platform: platformConfigured(config),
           remoteAlarm: true,
           location: true,
-          fcm: fcmConfigured(config),
+          fcm: pushProviderHealth(config).fcm !== 'not_configured',
+          push: { ready: pushReady(pushProviderHealth(config)), providers: pushProviderHealth(config) },
           accountResolve: resolveConfigured(config),
           kkchatContacts: Boolean(config.kkchatApiUrl && config.kkchatServiceToken),
         })
+        return
+      }
+      if (path === '/api/days/app/version' && req.method === 'GET') {
+        const platform = url.searchParams.get('platform') || 'android'
+        sendJson(res, 200, platform === 'ios' ? iosVersion() : androidVersion(config))
         return
       }
       if (path === '/api/days/auth/login' && req.method === 'GET') return void (await handleLogin(req, res, url, config))

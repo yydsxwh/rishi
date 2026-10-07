@@ -13,8 +13,8 @@ android {
         applicationId = "com.yydsxwh.kemiao.days"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "2.5.0"
+        versionCode = 20
+        versionName = "2.6.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         // 正式包默认走吉隆坡 www.yydsxwh.com。香港应急包用

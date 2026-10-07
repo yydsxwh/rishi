@@ -30,5 +30,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             val request = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork("rishi-sync", ExistingPeriodicWorkPolicy.UPDATE, request)
         }
+
+        fun setAutomatic(context: Context, enabled: Boolean) {
+            if (enabled) enqueue(context) else WorkManager.getInstance(context).cancelUniqueWork("rishi-sync")
+        }
     }
 }

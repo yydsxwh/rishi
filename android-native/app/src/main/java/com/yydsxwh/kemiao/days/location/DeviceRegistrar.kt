@@ -7,11 +7,16 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.yydsxwh.kemiao.days.BuildConfig
+import com.yydsxwh.kemiao.days.data.local.AppearanceStore
 import com.yydsxwh.kemiao.days.data.local.RemoteAlarmStore
 import com.yydsxwh.kemiao.days.data.local.SecureSession
+import com.yydsxwh.kemiao.days.data.model.PushPolicy
 import com.yydsxwh.kemiao.days.data.remote.RemoteAlarmClient
 import com.yydsxwh.kemiao.days.notify.FirebaseBootstrap
+import java.util.Locale
 
 /** 把本机能力交给服务端。好友只能看到权限是否打开，看不到型号。 */
 object DeviceRegistrar {
@@ -19,9 +24,14 @@ object DeviceRegistrar {
         val token = SecureSession(context).token() ?: return
         val store = RemoteAlarmStore(context)
         val push = FirebaseBootstrap.token()
-        val json = capabilitiesJson(context, sharing, precise, push.isNotBlank())
+        val gms = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context) == ConnectionResult.SUCCESS
+        val region = PushPolicy.region(Locale.getDefault().country, gms)
+        val tokens = buildMap { if (push.isNotBlank() && FirebaseBootstrap.ready(context)) put("fcm", push) }
+        val provider = PushPolicy.choose("android", region, gms, tokens)
+        AppearanceStore(context).setPushProvider(provider)
+        val json = capabilitiesJson(context, sharing, precise, provider == "fcm" && push.isNotBlank())
         val client = RemoteAlarmClient(tokenProvider = { token })
-        val id = client.registerDevice(store.deviceId(), BuildConfig.VERSION_NAME, push, json)
+        val id = client.registerDevice(store.deviceId(), BuildConfig.VERSION_NAME, tokens[provider].orEmpty(), json, provider, gms, region)
         if (id.isNotBlank()) store.saveDeviceId(id)
     }
 
