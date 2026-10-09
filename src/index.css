@@ -1477,6 +1477,110 @@ select.input {
   justify-content: center;
 }
 
+.clock-picker {
+  margin: 8px 0 12px;
+  padding: 12px;
+  border: 1px solid rgba(225, 29, 72, 0.35);
+  border-radius: 16px;
+  background: #fff;
+  color: #3b2340;
+  min-width: 0;
+}
+
+.clock-picker legend {
+  padding: 0 6px;
+  font-weight: 700;
+  color: #3b2340;
+}
+
+.clock-open,
+.clock-nav button,
+.clock-day {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.clock-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.clock-nav strong {
+  color: #3b2340;
+}
+
+.clock-week,
+.clock-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.clock-week span {
+  text-align: center;
+  color: #6b4456;
+  font-size: 13px;
+}
+
+.clock-day {
+  border: 1px solid #f3c1cc;
+  border-radius: 10px;
+  background: #fff;
+  color: #3b2340;
+  padding: 0;
+}
+
+.clock-day.outside {
+  color: #8a6574;
+  background: #fff7f8;
+}
+
+.clock-day.selected {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+.clock-parts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.clock-parts label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #3b2340;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.clock-parts select {
+  min-height: 48px;
+  border: 2px solid #e11d48;
+  border-radius: 12px;
+  background: #fff;
+  color: #3b2340;
+  font-size: 16px;
+  padding: 8px;
+}
+
+.clock-preview {
+  margin: 8px 0 0;
+  color: #3b2340;
+  font-weight: 700;
+}
+
+.clock-error {
+  margin: 4px 0 0;
+  color: #9f1239;
+  font-weight: 700;
+}
+
 .gear-btn {
   width: 38px;
   height: 38px;

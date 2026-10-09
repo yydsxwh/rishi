@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -44,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yydsxwh.kemiao.days.data.local.AppearanceStore
 import com.yydsxwh.kemiao.days.data.local.SecureSession
 import com.yydsxwh.kemiao.days.data.model.AppData
+import com.yydsxwh.kemiao.days.data.model.AlarmClock
 import com.yydsxwh.kemiao.days.data.model.RemoteAlarmPolicy
 import com.yydsxwh.kemiao.days.data.remote.OwnerSettingsDto
 import com.yydsxwh.kemiao.days.data.remote.RemoteAlarmClient
@@ -265,14 +267,7 @@ private fun entityWindow(data: AppData, type: String, id: String): Triple<String
     }
 }
 
-fun localToIso(date: String, time: String): String? {
-    val day = runCatching { LocalDate.parse(date.trim()) }.getOrNull() ?: return null
-    val parts = time.trim().split(":")
-    val hour = parts.getOrNull(0)?.toIntOrNull() ?: return null
-    val minute = parts.getOrNull(1)?.toIntOrNull() ?: return null
-    if (hour !in 0..23 || minute !in 0..59) return null
-    return ZonedDateTime.of(day, LocalTime.of(hour, minute), ZoneId.systemDefault()).toInstant().toString()
-}
+fun localToIso(date: String, time: String): String? = AlarmClock.localToIso(date, time)
 
 @Composable
 fun FriendWakeScreen(
@@ -406,10 +401,10 @@ private fun GrantCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) 
     var picked by rememberSaveable { mutableStateOf("") }
     var pickedName by rememberSaveable { mutableStateOf("") }
     var scope by rememberSaveable { mutableStateOf("TIME_RANGE") }
-    var fromDate by rememberSaveable { mutableStateOf("") }
-    var fromTime by rememberSaveable { mutableStateOf("20:00") }
-    var untilDate by rememberSaveable { mutableStateOf("") }
-    var untilTime by rememberSaveable { mutableStateOf("14:00") }
+    var fromDate by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    var fromTime by rememberSaveable { mutableStateOf("20:00:00") }
+    var untilDate by rememberSaveable { mutableStateOf(LocalDate.now().plusDays(1).toString()) }
+    var untilTime by rememberSaveable { mutableStateOf("14:00:00") }
     var lead by rememberSaveable { mutableStateOf("24") }
     var trail by rememberSaveable { mutableStateOf("2") }
     var entityKey by rememberSaveable { mutableStateOf("") }
@@ -461,10 +456,10 @@ private fun GrantCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) 
             }
             if (scope == "PERMANENT") Text("永久有效，直到你主动撤销")
             if (scope == "TIME_RANGE") {
-                OutlinedTextField(fromDate, { fromDate = it }, label = { Text("开始日期 2026-10-07") })
-                OutlinedTextField(fromTime, { fromTime = it }, label = { Text("开始时间") })
-                OutlinedTextField(untilDate, { untilDate = it }, label = { Text("结束日期") })
-                OutlinedTextField(untilTime, { untilTime = it }, label = { Text("结束时间") })
+                Text("授权开始")
+                AlarmWhenFields(fromDate, fromTime, { fromDate = it }, { fromTime = it }, futureOnly = false)
+                Text("授权结束")
+                AlarmWhenFields(untilDate, untilTime, { untilDate = it }, { untilTime = it }, futureOnly = false)
             }
             if (scope == "ENTITY_BOUND") {
                 choices.forEach { (key, label) ->
@@ -488,6 +483,7 @@ private fun GrantCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) 
                     else -> {
                         val from = localToIso(fromDate, fromTime) ?: return@Button
                         val until = localToIso(untilDate, untilTime) ?: return@Button
+                        if (until <= from) return@Button
                         model.grant(scope, picked, name, from, until, "", "", "", "", "", 0, 0, data)
                     }
                 }
@@ -528,11 +524,13 @@ private fun GrantCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) 
 
 @Composable
 private fun SendCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) {
+    val initial = remember { AlarmClock.defaultSelection() }
     var grantId by rememberSaveable { mutableStateOf("") }
-    var date by rememberSaveable { mutableStateOf("") }
-    var time by rememberSaveable { mutableStateOf("10:30") }
+    var date by rememberSaveable { mutableStateOf(initial.first) }
+    var time by rememberSaveable { mutableStateOf(initial.second) }
     var title by rememberSaveable { mutableStateOf("起床啦") }
     var note by rememberSaveable { mutableStateOf("") }
+    var localError by rememberSaveable { mutableStateOf("") }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("我可以给谁设闹钟", style = MaterialTheme.typography.titleMedium)
@@ -541,16 +539,22 @@ private fun SendCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) {
             open.forEach { target ->
                 TextButton(onClick = { grantId = target.id }) { Text(if (grantId == target.id) "${target.ownerName} ✓" else target.ownerName) }
             }
-            OutlinedTextField(date, { date = it }, label = { Text("日期 2026-10-08") })
-            OutlinedTextField(time, { time = it }, label = { Text("时间") })
+            AlarmWhenFields(date, time, { date = it }, { time = it }, futureOnly = true)
             OutlinedTextField(title, { title = it }, label = { Text("标题") })
             OutlinedTextField(note, { note = it }, label = { Text("备注") })
+            if (localError.isNotBlank()) Text(localError, color = MaterialTheme.colorScheme.error)
             Button(onClick = {
-                val target = open.find { it.id == grantId } ?: return@Button
-                val trigger = localToIso(date, time) ?: return@Button
+                val target = open.find { it.id == grantId }
+                val problem = AlarmClock.alarmProblem(date, time)
+                val trigger = localToIso(date, time)
+                if (target == null || trigger == null || problem != null || title.isBlank()) {
+                    localError = problem ?: "请选择已授权的好友，并填写标题和时分秒"
+                    return@Button
+                }
+                localError = ""
                 model.createAlarm(target.ownerUserId, target.id, trigger, title, note, data)
             }) { Text("设置闹钟") }
-            Text("发送成功只表示请求已交给服务器。对方手机用系统闹钟登记之后，这里才会变成已设置。", style = MaterialTheme.typography.bodySmall)
+            Text("发送成功只表示请求已交给服务器。对方手机用系统闹钟登记之后，这里才会变成已设置。精确闹钟未开启时不会显示成已设置。", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

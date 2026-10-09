@@ -21,10 +21,10 @@ class RemoteAlarmPolicyTest {
         val millis = RemoteAlarmPolicy.triggerMillis("2026-10-08T02:30:00Z")
         assertEquals(1_791_426_600_000L, millis)
         val text = RemoteAlarmPolicy.describeTrigger("2026-10-08T02:30:00Z", "Asia/Shanghai", ZoneId.of("Asia/Shanghai"))
-        assertEquals("10月8日 10:30（你的当前时区）", text)
-        val traveled = RemoteAlarmPolicy.describeTrigger("2026-10-08T02:30:00Z", "Asia/Shanghai", ZoneId.of("UTC"))
-        assertTrue(traveled.contains("02:30"))
-        assertTrue(traveled.contains("10月8日 10:30"))
+        assertEquals("10月8日 10:30:00（你的当前时区）", text)
+        val traveled = RemoteAlarmPolicy.describeTrigger("2026-10-08T02:30:09Z", "Asia/Shanghai", ZoneId.of("UTC"))
+        assertTrue(traveled.contains("02:30:09"))
+        assertTrue(traveled.contains("10月8日 10:30:09"))
         assertTrue(traveled.contains("Asia/Shanghai"))
     }
 
