@@ -62,7 +62,7 @@ export function maskEmail(email: string | undefined): string {
   return `${value.slice(0, 1)}***@${value.slice(at + 1)}`
 }
 
-export const WEB_BUILD = '2.6.2'
+export const WEB_BUILD = '2.6.3'
 
 async function parse<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => ({}))) as T & { error?: string; message?: string }
