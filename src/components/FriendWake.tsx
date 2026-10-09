@@ -1,15 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppStore } from '../hooks/useAppStore'
 import { daysFetch } from '../lib/days-api'
+import { alarmClockError, clockToIso, defaultClock, formatDate, localDateTimeToIso, type ClockParts } from '../lib/clock-picker'
 import { loadWake, postJson, remoteAlarmStatusText, type RemoteAlarmRecord, type RemoteGrant } from '../lib/remote-alarm'
+import ClockPicker from './ClockPicker'
 import type { TrustedAccount } from '../lib/location'
 import TrustPersonPicker from './TrustPersonPicker'
 
 function localIso(date: string, time: string): string | null {
-  if (!date || !time) return null
-  const parsed = new Date(`${date}T${time}`)
-  if (Number.isNaN(parsed.getTime())) return null
-  return parsed.toISOString()
+  return localDateTimeToIso(date, time)
+}
+
+function grantWindow(now = new Date()): { from: ClockParts; until: ClockParts } {
+  const end = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+  return {
+    from: { date: formatDate(now), hour: 20, minute: 0, second: 0 },
+    until: { date: formatDate(end), hour: 14, minute: 0, second: 0 },
+  }
 }
 
 function entityOf(store: AppStore, type: string, id: string): { title: string; start: string; end: string } | null {
@@ -49,16 +56,14 @@ export default function FriendWake({ store }: { store: AppStore }) {
   const [error, setError] = useState('')
   const [person, setPerson] = useState<TrustedAccount | null>(null)
   const [scope, setScope] = useState<'TIME_RANGE' | 'PERMANENT' | 'ENTITY_BOUND'>('TIME_RANGE')
-  const [fromDate, setFromDate] = useState('')
-  const [fromTime, setFromTime] = useState('20:00')
-  const [untilDate, setUntilDate] = useState('')
-  const [untilTime, setUntilTime] = useState('14:00')
+  const initialWindow = grantWindow()
+  const [fromClock, setFromClock] = useState<ClockParts>(initialWindow.from)
+  const [untilClock, setUntilClock] = useState<ClockParts>(initialWindow.until)
   const [entityKey, setEntityKey] = useState('')
   const [lead, setLead] = useState(24)
   const [trail, setTrail] = useState(2)
   const [grantId, setGrantId] = useState('')
-  const [alarmDate, setAlarmDate] = useState('')
-  const [alarmTime, setAlarmTime] = useState('10:30')
+  const [alarmClock, setAlarmClock] = useState<ClockParts>(() => defaultClock())
   const [title, setTitle] = useState('起床啦')
   const [note, setNote] = useState('')
   const [revokeId, setRevokeId] = useState('')
@@ -157,10 +162,10 @@ export default function FriendWake({ store }: { store: AppStore }) {
           trailHours: trail,
         })
       } else {
-        const validFrom = localIso(fromDate, fromTime)
-        const validUntil = localIso(untilDate, untilTime)
-        if (!validFrom || !validUntil) {
-          setError('请填写起止日期和时间')
+        const validFrom = clockToIso(fromClock)
+        const validUntil = clockToIso(untilClock)
+        if (!validFrom || !validUntil || Date.parse(validUntil) <= Date.parse(validFrom)) {
+          setError('请选择授权的起止日期和时分秒，结束要晚于开始')
           return
         }
         await postJson('/api/days/remote-alarm/grants', 'POST', {
@@ -181,9 +186,14 @@ export default function FriendWake({ store }: { store: AppStore }) {
 
   async function sendAlarm() {
     const target = targets.find((item) => item.id === grantId)
-    const triggerAt = localIso(alarmDate, alarmTime)
-    if (!target || !triggerAt || !title.trim()) {
-      setError('请选择好友，并填写时间和标题')
+    const clockError = alarmClockError(alarmClock)
+    const triggerAt = clockToIso(alarmClock)
+    if (!target || !title.trim()) {
+      setError('请选择好友，并填写标题')
+      return
+    }
+    if (!triggerAt || clockError) {
+      setError(clockError || '请选择日期和时分秒')
       return
     }
     try {
@@ -251,12 +261,10 @@ export default function FriendWake({ store }: { store: AppStore }) {
       </div>
       {scope === 'PERMANENT' && <p>永久有效，直到你主动撤销</p>}
       {scope === 'TIME_RANGE' && (
-        <div className="row wrap">
-          <input className="input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-          <input className="input" type="time" value={fromTime} onChange={(event) => setFromTime(event.target.value)} />
-          <input className="input" type="date" value={untilDate} onChange={(event) => setUntilDate(event.target.value)} />
-          <input className="input" type="time" value={untilTime} onChange={(event) => setUntilTime(event.target.value)} />
-        </div>
+        <>
+          <ClockPicker label="授权开始" value={fromClock} onChange={setFromClock} />
+          <ClockPicker label="授权结束" value={untilClock} onChange={setUntilClock} />
+        </>
       )}
       {scope === 'ENTITY_BOUND' && (
         <>
@@ -276,10 +284,7 @@ export default function FriendWake({ store }: { store: AppStore }) {
         <button key={target.id} className="btn ghost" onClick={() => setGrantId(target.id)}>{grantId === target.id ? `${target.ownerName} ✓` : target.ownerName}</button>
       ))}
       {grantId && <DeviceHint target={targets.find((item) => item.id === grantId)} />}
-      <div className="row wrap">
-        <input className="input" type="date" value={alarmDate} onChange={(event) => setAlarmDate(event.target.value)} />
-        <input className="input" type="time" value={alarmTime} onChange={(event) => setAlarmTime(event.target.value)} />
-      </div>
+      <ClockPicker label="闹钟时间" value={alarmClock} onChange={setAlarmClock} futureOnly />
       <label>标题<input className="input" value={title} onChange={(event) => setTitle(event.target.value)} /></label>
       <label>备注<input className="input" value={note} onChange={(event) => setNote(event.target.value)} /></label>
       <button className="btn primary" onClick={() => void sendAlarm()}>设置闹钟</button>

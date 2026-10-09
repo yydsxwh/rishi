@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter
 /** 远程闹钟的时间、编号和是否恢复。这些判断不能依赖进程还活着。 */
 object RemoteAlarmPolicy {
     private val OPEN = setOf("CREATED", "DELIVERY_PENDING", "DELIVERED", "DEVICE_SCHEDULED")
-    private val clock = DateTimeFormatter.ofPattern("M月d日 HH:mm")
+    private val clock = DateTimeFormatter.ofPattern("M月d日 HH:mm:ss")
 
     /** 闹钟响了之后，晚到超过这个时间就不再补响。 */
     const val RING_GRACE_MS = 3 * 60 * 1000L

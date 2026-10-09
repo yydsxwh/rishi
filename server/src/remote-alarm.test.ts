@@ -198,11 +198,12 @@ test('HTTP 未登录拒绝，登录后创建仍只表示已发送', async () => 
     const alarmRes = await fetch(`http://127.0.0.1:${port}/api/remote-alarm/alarms`, {
       method: 'POST',
       headers: { authorization: `Bearer ${aliceSession.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(alarmBody(grantId, owner.sub, 'http-1')),
+      body: JSON.stringify({ ...alarmBody(grantId, owner.sub, 'http-1'), triggerAt: '2027-01-08T04:30:09.000Z' }),
     })
     assert.equal(alarmRes.status, 201)
-    const payload = (await alarmRes.json()) as { alarm: { status: string; deviceReady: boolean; acceptance: string } }
+    const payload = (await alarmRes.json()) as { alarm: { status: string; deviceReady: boolean; acceptance: string; triggerAt: string } }
     assert.equal(payload.alarm.status, 'DELIVERY_PENDING')
+    assert.equal(payload.alarm.triggerAt, '2027-01-08T04:30:09.000Z')
     assert.equal(payload.alarm.deviceReady, false)
     assert.equal(payload.alarm.acceptance, 'sent')
     const pendingAnon = await fetch(`http://127.0.0.1:${port}/api/days/remote-alarm/pending`)
