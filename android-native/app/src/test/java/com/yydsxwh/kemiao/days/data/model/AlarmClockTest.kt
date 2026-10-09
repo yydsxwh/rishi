@@ -15,6 +15,7 @@ class AlarmClockTest {
     fun keepsSecondsThroughUtc() {
         assertEquals("2026-10-10T00:05:09Z", AlarmClock.localToIso("2026-10-10", "08:05:09", shanghai))
         assertEquals("2026-10-10T15:59:59Z", AlarmClock.localToIso("2026-10-10", "23:59:59", shanghai))
+        assertEquals("2026-10-09T16:00:00Z", AlarmClock.localToIso("2026-10-10", "00:00:00", shanghai))
         assertEquals(9, AlarmClock.parseClock("08:05:09")?.second)
     }
 

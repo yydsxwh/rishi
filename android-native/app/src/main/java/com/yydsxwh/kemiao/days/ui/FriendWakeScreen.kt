@@ -69,6 +69,7 @@ import java.util.UUID
 
 data class WakeUi(
     val loading: Boolean = false,
+    val submitting: Boolean = false,
     val error: String? = null,
     val notice: String? = null,
     val signedOut: Boolean = false,
@@ -164,6 +165,8 @@ class FriendWakeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun createAlarm(ownerId: String, grantId: String, triggerAt: String, title: String, note: String, data: AppData) {
+        if (_state.value.submitting) return
+        _state.update { it.copy(submitting = true, error = null) }
         viewModelScope.launch(Dispatchers.IO) {
             val result = runCatching {
                 client.createAlarm(ownerId, grantId, triggerAt, ZoneId.systemDefault().id, title, note, UUID.randomUUID().toString())
@@ -171,9 +174,9 @@ class FriendWakeViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.Main) {
                 result.onSuccess { alarm ->
                     val text = statusText(alarm.status, alarm.deviceReady)
-                    _state.update { it.copy(notice = text) }
+                    _state.update { it.copy(submitting = false, notice = text, error = null) }
                     refresh(data)
-                }.onFailure { error -> _state.update { it.copy(error = messageOf(error)) } }
+                }.onFailure { error -> _state.update { it.copy(submitting = false, error = messageOf(error)) } }
             }
         }
     }
@@ -543,17 +546,21 @@ private fun SendCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) {
             OutlinedTextField(title, { title = it }, label = { Text("标题") })
             OutlinedTextField(note, { note = it }, label = { Text("备注") })
             if (localError.isNotBlank()) Text(localError, color = MaterialTheme.colorScheme.error)
-            Button(onClick = {
-                val target = open.find { it.id == grantId }
-                val problem = AlarmClock.alarmProblem(date, time)
-                val trigger = localToIso(date, time)
-                if (target == null || trigger == null || problem != null || title.isBlank()) {
-                    localError = problem ?: "请选择已授权的好友，并填写标题和时分秒"
-                    return@Button
-                }
-                localError = ""
-                model.createAlarm(target.ownerUserId, target.id, trigger, title, note, data)
-            }) { Text("设置闹钟") }
+            Button(
+                onClick = {
+                    val target = open.find { it.id == grantId }
+                    val problem = AlarmClock.alarmProblem(date, time)
+                    val trigger = localToIso(date, time)
+                    if (target == null || trigger == null || problem != null || title.isBlank()) {
+                        localError = problem ?: "请选择已授权的好友，并填写标题和时分秒"
+                        return@Button
+                    }
+                    localError = ""
+                    model.createAlarm(target.ownerUserId, target.id, trigger, title, note, data)
+                },
+                enabled = !state.submitting,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (state.submitting) "正在保存…" else "设置闹钟") }
             Text("发送成功只表示请求已交给服务器。对方手机用系统闹钟登记之后，这里才会变成已设置。精确闹钟未开启时不会显示成已设置。", style = MaterialTheme.typography.bodySmall)
         }
     }
