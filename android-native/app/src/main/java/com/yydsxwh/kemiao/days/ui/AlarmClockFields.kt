@@ -1,15 +1,16 @@
 package com.yydsxwh.kemiao.days.ui
 
-import android.widget.NumberPicker
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,12 +24,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.yydsxwh.kemiao.days.data.model.AlarmClock
@@ -37,6 +38,10 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneOffset
 
+/**
+ * 日期日历必须放在有明确高度的容器里。
+ * 外层再套 verticalScroll 会给日历无限高度，格子出不来，看起来就像点了没反应。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlarmWhenFields(
@@ -59,14 +64,14 @@ fun AlarmWhenFields(
         initialSelectedDateMillis = initialMillis,
         yearRange = (year - 1)..(year + 10),
     )
-    LaunchedEffect(dateOpen, initialMillis) {
+    LaunchedEffect(dateOpen) {
         if (dateOpen && initialMillis != null) pickerState.selectedDateMillis = initialMillis
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { dateOpen = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+        Button(onClick = { dateOpen = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
             Text(if (date.isBlank()) "选择日期" else "日期 $date")
         }
-        Button(onClick = { timeOpen = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+        Button(onClick = { timeOpen = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
             Text("时间 $shown")
         }
         Text("预览 ${AlarmClock.preview(date, shown)}", style = MaterialTheme.typography.titleMedium)
@@ -79,68 +84,72 @@ fun AlarmWhenFields(
         ) {
             Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize().padding(12.dp)) {
-                    Text("选择日期", style = MaterialTheme.typography.titleLarge)
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                        DatePicker(state = pickerState, modifier = Modifier.fillMaxWidth())
-                    }
+                    Text("选择日期", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
+                    DatePicker(state = pickerState, modifier = Modifier.weight(1f).fillMaxWidth())
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = { dateOpen = false }) { Text("取消") }
-                        TextButton(onClick = {
-                            val millis = pickerState.selectedDateMillis
-                            if (millis != null) {
-                                onDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
-                            }
-                            dateOpen = false
-                        }) { Text("确定") }
+                        TextButton(onClick = { dateOpen = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消") }
+                        TextButton(
+                            onClick = {
+                                val millis = pickerState.selectedDateMillis
+                                if (millis != null) {
+                                    onDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
+                                }
+                                dateOpen = false
+                            },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text("确定") }
                     }
                 }
             }
         }
     }
     if (timeOpen) {
-        TimeWheelDialog(
+        TimeListDialog(
             hour = clock.hour,
             minute = clock.minute,
             second = clock.second,
-            onChange = { hour, minute, second -> onTime(AlarmClock.formatClock(hour, minute, second)) },
+            onConfirm = { hour, minute, second ->
+                onTime(AlarmClock.formatClock(hour, minute, second))
+                timeOpen = false
+            },
             onDismiss = { timeOpen = false },
         )
     }
 }
 
 @Composable
-private fun TimeWheelDialog(
+private fun TimeListDialog(
     hour: Int,
     minute: Int,
     second: Int,
-    onChange: (Int, Int, Int) -> Unit,
+    onConfirm: (Int, Int, Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var hourValue by rememberSaveable { mutableIntStateOf(hour) }
-    var minuteValue by rememberSaveable { mutableIntStateOf(minute) }
-    var secondValue by rememberSaveable { mutableIntStateOf(second) }
+    var hourValue by remember(hour) { mutableIntStateOf(hour) }
+    var minuteValue by remember(minute) { mutableIntStateOf(minute) }
+    var secondValue by remember(second) { mutableIntStateOf(second) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = true),
     ) {
-        Surface(Modifier.fillMaxWidth().padding(16.dp)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("选择时间", style = MaterialTheme.typography.titleLarge)
                 Text(
                     AlarmClock.formatClock(hourValue, minuteValue, secondValue),
                     style = MaterialTheme.typography.headlineMedium,
                 )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Wheel("时", hourValue, 23, Modifier.weight(1f)) { hourValue = it }
-                    Wheel("分", minuteValue, 59, Modifier.weight(1f)) { minuteValue = it }
-                    Wheel("秒", secondValue, 59, Modifier.weight(1f)) { secondValue = it }
+                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberList("时", hourValue, 23, Modifier.weight(1f)) { hourValue = it }
+                    NumberList("分", minuteValue, 59, Modifier.weight(1f)) { minuteValue = it }
+                    NumberList("秒", secondValue, 59, Modifier.weight(1f)) { secondValue = it }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text("取消") }
-                    TextButton(onClick = {
-                        onChange(hourValue, minuteValue, secondValue)
-                        onDismiss()
-                    }) { Text("确定") }
+                    TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消") }
+                    TextButton(
+                        onClick = { onConfirm(hourValue, minuteValue, secondValue) },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text("确定") }
                 }
             }
         }
@@ -148,26 +157,27 @@ private fun TimeWheelDialog(
 }
 
 @Composable
-private fun Wheel(label: String, value: Int, max: Int, modifier: Modifier, onChange: (Int) -> Unit) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+private fun NumberList(label: String, value: Int, max: Int, modifier: Modifier, onChange: (Int) -> Unit) {
+    val state = rememberLazyListState()
+    LaunchedEffect(value) {
+        state.scrollToItem(value.coerceIn(0, max))
+    }
+    Column(modifier) {
         Text(label, style = MaterialTheme.typography.titleMedium)
-        AndroidView(
-            modifier = Modifier.fillMaxWidth().height(180.dp),
-            factory = { context ->
-                NumberPicker(context).apply {
-                    minValue = 0
-                    maxValue = max
-                    displayedValues = Array(max + 1) { index -> "%02d".format(index) }
-                    wrapSelectorWheel = true
-                    this.value = value.coerceIn(0, max)
-                    setOnValueChangedListener { _, _, newValue -> onChange(newValue) }
+        LazyColumn(state = state, modifier = Modifier.fillMaxWidth().height(280.dp)) {
+            items(max + 1) { item ->
+                TextButton(
+                    onClick = { onChange(item) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Text(
+                        "%02d".format(item),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = if (item == value) FontWeight.Bold else FontWeight.Normal,
+                        color = if (item == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
                 }
-            },
-            update = { picker ->
-                if (picker.maxValue != max) picker.maxValue = max
-                val next = value.coerceIn(0, max)
-                if (picker.value != next) picker.value = next
-            },
-        )
+            }
+        }
     }
 }

@@ -16,6 +16,8 @@ class AlarmClockTest {
         assertEquals("2026-10-10T00:05:09Z", AlarmClock.localToIso("2026-10-10", "08:05:09", shanghai))
         assertEquals("2026-10-10T15:59:59Z", AlarmClock.localToIso("2026-10-10", "23:59:59", shanghai))
         assertEquals("2026-10-09T16:00:00Z", AlarmClock.localToIso("2026-10-10", "00:00:00", shanghai))
+        assertEquals("2026-10-11T00:30:15Z", AlarmClock.localToIso("2026-10-11", "08:30:15", shanghai))
+        assertEquals("2026-12-31T16:00:01Z", AlarmClock.localToIso("2027-01-01", "00:00:01", shanghai))
         assertEquals(9, AlarmClock.parseClock("08:05:09")?.second)
     }
 
