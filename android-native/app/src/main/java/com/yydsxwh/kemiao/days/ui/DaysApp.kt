@@ -314,7 +314,32 @@ fun DaysApp(viewModel: DaysViewModel, activity: Activity) {
         }
     }
     offeredUpdate?.let { remote ->
-        UpdateDialog(remote, onLater = { LaunchGate.updateDismissed = true; offeredUpdate = null }, onUpdate = { installOfficialUpdate(activity, remote.downloadUrl) })
+        UpdateDialog(remote, onLater = { LaunchGate.updateDismissed = true; offeredUpdate = null }, onUpdate = {
+            beginOfficialUpdate(activity, remote)
+            offeredUpdate = null
+        })
+    }
+    val update by com.yydsxwh.kemiao.days.update.AppUpdateController.state.collectAsState()
+    if (update.phase != "idle" && update.phase != "success") {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                if (update.phase == "failed" || update.phase == "paused" || update.phase == "waiting_install" || update.phase == "need_permission") {
+                    if (update.phase == "failed") com.yydsxwh.kemiao.days.update.AppUpdateController.cancel(activity)
+                }
+            },
+            title = { androidx.compose.material3.Text("应用更新") },
+            text = {
+                UpdateProgressCard(
+                    update,
+                    onPause = { com.yydsxwh.kemiao.days.update.AppUpdateController.pause() },
+                    onResume = { com.yydsxwh.kemiao.days.update.AppUpdateController.resume(activity) },
+                    onCancel = { com.yydsxwh.kemiao.days.update.AppUpdateController.cancel(activity) },
+                    onRetry = { com.yydsxwh.kemiao.days.update.AppUpdateController.retry(activity) },
+                    onInstallPermission = { com.yydsxwh.kemiao.days.update.AppUpdateController.openInstallSettings(activity) },
+                )
+            },
+            confirmButton = {},
+        )
     }
     ImportPreviewDialog(state, viewModel)
 }

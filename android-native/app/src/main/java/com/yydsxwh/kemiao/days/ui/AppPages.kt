@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,7 +41,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.yydsxwh.kemiao.days.BuildConfig
 import com.yydsxwh.kemiao.days.app.DaysUiState
@@ -51,14 +51,12 @@ import com.yydsxwh.kemiao.days.data.remote.AppVersionDto
 import com.yydsxwh.kemiao.days.data.remote.DaysApi
 import com.yydsxwh.kemiao.days.data.sync.SyncWorker
 import com.yydsxwh.kemiao.days.notify.WakeGuardService
+import com.yydsxwh.kemiao.days.update.AppUpdateController
 import com.yydsxwh.kemiao.days.ui.theme.Brand
 import com.yydsxwh.kemiao.days.ui.theme.Muted
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -231,9 +229,24 @@ fun AboutScreen(activity: Activity) {
         if (message.isNotBlank()) Text(message)
         version?.takeIf { it.latestVersionCode > BuildConfig.VERSION_CODE }?.let { remote ->
             Text(remote.releaseNotes)
-            Button(onClick = { installOfficialUpdate(activity, remote.downloadUrl) }) { Text("立即更新") }
+            Button(onClick = {
+                AppUpdateController.start(activity, remote.latestVersionName, remote.latestVersionCode, remote.downloadUrl, remote.sha256)
+            }) { Text("立即更新") }
         }
+        val update by AppUpdateController.state.collectAsState()
+        UpdateProgressCard(
+            update,
+            onPause = { AppUpdateController.pause() },
+            onResume = { AppUpdateController.resume(activity) },
+            onCancel = { AppUpdateController.cancel(activity) },
+            onRetry = { AppUpdateController.retry(activity) },
+            onInstallPermission = { AppUpdateController.openInstallSettings(activity) },
+        )
     }
+}
+
+fun beginOfficialUpdate(activity: Activity, version: AppVersionDto) {
+    AppUpdateController.start(activity, version.latestVersionName, version.latestVersionCode, version.downloadUrl, version.sha256)
 }
 
 @Composable
@@ -260,20 +273,7 @@ fun Avatar(name: String?, url: String?, size: Int) {
 }
 
 fun installOfficialUpdate(activity: Activity, url: String) {
-    if (!url.startsWith("https://www.yydsxwh.com/") && !url.startsWith("https://xiaowenhua.net/")) return
-    if (Build.VERSION.SDK_INT >= 26 && !activity.packageManager.canRequestPackageInstalls()) {
-        activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}")))
-        return
-    }
-    Thread {
-        val dir = File(activity.cacheDir, "updates").apply { mkdirs() }
-        val file = File(dir, "kemiao-days.apk")
-        val body = OkHttpClient().newCall(Request.Builder().url(url).build()).execute().body ?: return@Thread
-        body.byteStream().use { input -> file.outputStream().use { output -> input.copyTo(output) } }
-        val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.updates", file)
-        val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        activity.startActivity(intent)
-    }.start()
+    AppUpdateController.start(activity, "", 0, url, "")
 }
 
 private fun maskEmail(email: String?): String {

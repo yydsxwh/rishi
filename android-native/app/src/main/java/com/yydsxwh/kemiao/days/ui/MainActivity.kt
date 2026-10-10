@@ -16,6 +16,7 @@ import androidx.core.app.ActivityCompat
 import com.yydsxwh.kemiao.days.app.DaysViewModel
 import com.yydsxwh.kemiao.days.data.local.AppearanceStore
 import com.yydsxwh.kemiao.days.ui.theme.DaysTheme
+import com.yydsxwh.kemiao.days.update.AppUpdateController
 
 class MainActivity : ComponentActivity() {
     private val viewModel: DaysViewModel by viewModels()
@@ -53,5 +54,6 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.syncNow()
+        AppUpdateController.onHostResume(this)
     }
 }
