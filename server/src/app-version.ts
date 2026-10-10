@@ -25,7 +25,7 @@ export function androidVersion(config: DaysConfig, env: NodeJS.ProcessEnv = proc
     downloadUrl: (env.DAYS_ANDROID_DOWNLOAD_URL || `${config.publicOrigin}/products/days/kemiao-days.apk`).trim(),
     releaseNotes: (env.DAYS_ANDROID_RELEASE_NOTES || '检查更新时可以看到下载进度、网速和安装状态。').trim(),
     publishedAt: (env.DAYS_ANDROID_PUBLISHED_AT || '').trim(),
-    sha256: (env.DAYS_ANDROID_SHA256 || '').trim().toLowerCase(),
+    sha256: (env.DAYS_ANDROID_SHA256 || '887d466dee54c3990a054b17f07c3f25f04c88c5d1e5473781458ecfa739f444').trim().toLowerCase(),
   }
 }
 
