@@ -73,6 +73,20 @@ class RemoteAlarmSync(private val context: Context) {
         store.save(kept.values.toList())
     }
 
+    /** 服务器撤销后，立刻卸掉这个人在本机登记、还没响的闹钟。重复调用不会再登记。 */
+    fun cancelCreator(creatorUserId: String): Int {
+        if (creatorUserId.isBlank()) return 0
+        var count = 0
+        val next = store.load().map { alarm ->
+            if (alarm.creatorUserId != creatorUserId || !RemoteAlarmPolicy.shouldCancelStored(alarm.status)) return@map alarm
+            scheduler.cancel(alarm)
+            count += 1
+            alarm.copy(status = "CANCELLED")
+        }
+        store.save(next)
+        return count
+    }
+
     private fun grantBlocked(error: Throwable?): Boolean {
         val code = (error as? RemoteAlarmException)?.code ?: return false
         return code.startsWith("REMOTE_ALARM_") && code != "REMOTE_ALARM_RATE_LIMITED"

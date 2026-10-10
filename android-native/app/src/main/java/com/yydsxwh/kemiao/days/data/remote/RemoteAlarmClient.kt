@@ -171,7 +171,11 @@ class RemoteAlarmClient(
     }
     fun updateGrant(id: String, json: String): RemoteGrantDto = decode<GrantBody>(request("/api/days/remote-alarm/grants/$id", "PATCH", json)).grant
     fun revokeGrant(id: String, cancelFuture: Boolean) {
-        request("/api/days/remote-alarm/grants/$id", "DELETE", """{"cancelFuture":$cancelFuture}""")
+        request("/api/days/remote-alarm/grants/$id?cancelFuture=${if (cancelFuture) 1 else 0}", "DELETE", """{"cancelFuture":$cancelFuture}""")
+    }
+
+    fun revokePerson(granteeUserId: String, cancelFuture: Boolean) {
+        request("/api/days/remote-alarm/grants/by-person", "POST", """{"granteeUserId":${q(granteeUserId)},"cancelFuture":$cancelFuture}""")
     }
 
     fun createAlarm(json: String): RemoteAlarmDto = decode<AlarmBody>(request("/api/days/remote-alarm/alarms", "POST", json)).alarm

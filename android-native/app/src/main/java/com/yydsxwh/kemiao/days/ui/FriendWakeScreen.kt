@@ -91,7 +91,7 @@ class FriendWakeViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(WakeUi())
     val state: StateFlow<WakeUi> = _state
 
-    fun refresh(data: AppData) {
+    fun refresh(data: AppData, notice: String? = null) {
         viewModelScope.launch {
             if (session.token().isNullOrBlank()) {
                 _state.value = WakeUi(signedOut = true)
@@ -110,11 +110,36 @@ class FriendWakeViewModel(app: Application) : AndroidViewModel(app) {
                     settings = client.settings(),
                     audit = client.audit(),
                     recent = runCatching { client.recentContacts() }.getOrDefault(emptyList()),
+                    notice = notice,
                     )
                 }
             }
             _state.value = result.getOrElse { error ->
-                WakeUi(error = (error as? RemoteAlarmException)?.message ?: "暂时连不上好友叫醒")
+                WakeUi(error = (error as? RemoteAlarmException)?.message ?: "暂时连不上好友叫醒", notice = notice)
+            }
+        }
+    }
+
+    fun revokePerson(granteeUserId: String, cancelFuture: Boolean, data: AppData) {
+        if (_state.value.submitting || granteeUserId.isBlank()) return
+        _state.update { it.copy(submitting = true, error = null) }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    client.revokePerson(granteeUserId, cancelFuture)
+                    if (!cancelFuture) return@runCatching "已设闹钟仍保留在这台手机上。"
+                    RemoteAlarmSync(getApplication()).cancelCreator(granteeUserId)
+                    val pulled = runCatching { RemoteAlarmSync(getApplication()).pullAndSchedule() }
+                    if (pulled.isSuccess) "这台手机上尚未响的闹钟已取消。"
+                    else "服务器已撤销。这台手机的闹钟取消还没同步完成，现在不能算全部取消成功。"
+                }
+            }
+            withContext(Dispatchers.Main) {
+                result.onSuccess { note ->
+                    refresh(data, notice = "已撤销该好友的授权。$note")
+                }.onFailure { error ->
+                    _state.update { it.copy(submitting = false, error = messageOf(error)) }
+                }
             }
         }
     }
@@ -411,7 +436,11 @@ private fun GrantCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) 
     var lead by rememberSaveable { mutableStateOf("24") }
     var trail by rememberSaveable { mutableStateOf("2") }
     var entityKey by rememberSaveable { mutableStateOf("") }
-    var revokeId by rememberSaveable { mutableStateOf("") }
+    var revokeUser by rememberSaveable { mutableStateOf("") }
+    var revokeName by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(state.submitting, state.notice) {
+        if (!state.submitting && state.notice?.startsWith("已撤销") == true) revokeUser = ""
+    }
     val choices = buildList {
         data.todos.filter { !it.done && !it.dueDate.isNullOrBlank() }.forEach { add("todo:${it.id}" to "待办 ${it.title}") }
         data.calendarEvents.forEach { add("event:${it.id}" to "日程 ${it.title}") }
@@ -421,19 +450,41 @@ private fun GrantCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) 
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("谁可以给我设闹钟", style = MaterialTheme.typography.titleMedium)
             Text("默认谁都不行。kkchat 好友、同群、同一个待办都不会自动获得权限。", style = MaterialTheme.typography.bodySmall)
-            if (state.given.isEmpty()) Text("还没有授权")
-            state.given.forEach { grant ->
-                val label = when (grant.scope) {
-                    "PERMANENT" -> "永久有效，直到你主动撤销"
-                    "ENTITY_BOUND" -> "仅限「${grant.entityTitle ?: "事项"}」"
-                    else -> "${grant.validFrom.orEmpty().take(16)} - ${grant.validUntil.orEmpty().take(16)}"
+            val active = state.given.filter { it.status != "REVOKED" }
+            val history = state.given.filter { it.status == "REVOKED" }
+            if (active.isEmpty()) Text("还没有有效授权")
+            active.groupBy { it.granteeUserId }.forEach { (userId, grants) ->
+                val name = grants.firstOrNull()?.granteeName?.ifBlank { null } ?: "好友"
+                Text(name, style = MaterialTheme.typography.titleSmall)
+                grants.forEach { grant ->
+                    val label = when (grant.scope) {
+                        "PERMANENT" -> "永久有效，直到你主动撤销"
+                        "ENTITY_BOUND" -> "仅限「${grant.entityTitle ?: "事项"}」"
+                        else -> "${grant.validFrom.orEmpty().take(16)} 至 ${grant.validUntil.orEmpty().take(16)}"
+                    }
+                    Text("${grantStatusText(grant.status)} · $label")
+                    if (grant.status == "ACTIVE") {
+                        TextButton(onClick = { model.setGrantStatus(grant.id, "PAUSED", data) }, modifier = Modifier.fillMaxWidth()) { Text("暂停这条授权") }
+                    }
+                    if (grant.status == "PAUSED") {
+                        TextButton(onClick = { model.setGrantStatus(grant.id, "ACTIVE", data) }, modifier = Modifier.fillMaxWidth()) { Text("恢复这条授权") }
+                    }
+                    if (grant.scope == "ENTITY_BOUND") {
+                        TextButton(onClick = { model.endEntity(grant.id, data) }, modifier = Modifier.fillMaxWidth()) { Text("事项已取消") }
+                    }
                 }
-                Text("${grant.granteeName} · ${grant.status} · $label")
-                Row {
-                    if (grant.status == "ACTIVE") TextButton(onClick = { model.setGrantStatus(grant.id, "PAUSED", data) }) { Text("暂停") }
-                    if (grant.status == "PAUSED") TextButton(onClick = { model.setGrantStatus(grant.id, "ACTIVE", data) }) { Text("恢复") }
-                    TextButton(onClick = { revokeId = grant.id }) { Text("撤销") }
-                    if (grant.scope == "ENTITY_BOUND") TextButton(onClick = { model.endEntity(grant.id, data) }) { Text("事项已取消") }
+                Button(
+                    onClick = {
+                        revokeUser = userId
+                        revokeName = name
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("撤销授权") }
+            }
+            if (history.isNotEmpty()) {
+                Text("已撤销记录", style = MaterialTheme.typography.titleSmall)
+                history.forEach { grant ->
+                    Text("${grant.granteeName.ifBlank { "好友" }} · 已撤销 · ${scopeLabel(grant)}")
                 }
             }
             Text("最近联系人只是快捷入口。确认是此人之后才会授权，而且不会同时打开定位。", style = MaterialTheme.typography.bodySmall)
@@ -510,16 +561,31 @@ private fun GrantCard(state: WakeUi, data: AppData, model: FriendWakeViewModel) 
             dismissButton = { TextButton(onClick = { model.clearPending() }) { Text("取消") } },
         )
     }
-    if (revokeId.isNotBlank()) {
+    if (revokeUser.isNotBlank()) {
         AlertDialog(
-            onDismissRequest = { revokeId = "" },
+            onDismissRequest = { if (!state.submitting) revokeUser = "" },
             title = { Text("撤销授权") },
-            text = { Text("是否同时取消该好友已经为你设置、但尚未触发的未来闹钟？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("将撤销「$revokeName」给你设闹钟的全部权限。默认同时取消此人已设、还没响的闹钟。其他好友不受影响。")
+                    if (state.submitting) Text("正在撤销…")
+                    state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
             confirmButton = {
-                TextButton(onClick = { model.revoke(revokeId, true, data); revokeId = "" }) { Text("撤销并取消闹钟") }
+                TextButton(
+                    enabled = !state.submitting,
+                    onClick = { model.revokePerson(revokeUser, true, data) },
+                ) { Text("撤销并取消闹钟") }
             },
             dismissButton = {
-                TextButton(onClick = { model.revoke(revokeId, false, data); revokeId = "" }) { Text("只撤销权限") }
+                Column {
+                    TextButton(
+                        enabled = !state.submitting,
+                        onClick = { model.revokePerson(revokeUser, false, data) },
+                    ) { Text("仅撤销权限") }
+                    TextButton(enabled = !state.submitting, onClick = { revokeUser = "" }) { Text("返回") }
+                }
             },
         )
     }
@@ -613,6 +679,20 @@ private fun WakeGuardCard(context: Context) {
             if (note.isNotBlank()) Text(note)
         }
     }
+}
+
+private fun grantStatusText(status: String): String = when (status) {
+    "ACTIVE" -> "有效"
+    "PAUSED" -> "已暂停"
+    "REVOKED" -> "已撤销"
+    "EXPIRED" -> "已过期"
+    else -> status
+}
+
+private fun scopeLabel(grant: com.yydsxwh.kemiao.days.data.remote.RemoteGrantDto): String = when (grant.scope) {
+    "PERMANENT" -> "永久"
+    "ENTITY_BOUND" -> grant.entityTitle ?: "跟随事项"
+    else -> "一段时间"
 }
 
 private fun statusText(status: String, deviceReady: Boolean): String = when {
