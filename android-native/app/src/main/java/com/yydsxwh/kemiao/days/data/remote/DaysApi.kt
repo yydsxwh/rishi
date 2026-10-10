@@ -42,6 +42,7 @@ data class RemoteSnapshot(
     val downloadUrl: String = "",
     val releaseNotes: String = "",
     val publishedAt: String = "",
+    val sha256: String = "",
 )
 
 class DaysApi(
