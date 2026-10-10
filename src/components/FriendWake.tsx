@@ -66,7 +66,8 @@ export default function FriendWake({ store }: { store: AppStore }) {
   const [alarmClock, setAlarmClock] = useState<ClockParts>(() => defaultClock())
   const [title, setTitle] = useState('起床啦')
   const [note, setNote] = useState('')
-  const [revokeId, setRevokeId] = useState('')
+  const [revokePersonId, setRevokePersonId] = useState('')
+  const [revokeBusy, setRevokeBusy] = useState(false)
   const [me, setMe] = useState('')
   const notified = useRef(new Set<string>())
 
@@ -129,6 +130,23 @@ export default function FriendWake({ store }: { store: AppStore }) {
       }
     }
   }, [alarms, me])
+
+  async function revokePerson(granteeUserId: string, cancelFuture: boolean) {
+    setRevokeBusy(true)
+    setError('')
+    try {
+      await postJson('/api/days/remote-alarm/grants/by-person', 'POST', { granteeUserId, cancelFuture })
+      setMessage(cancelFuture
+        ? '已撤销该好友的授权，并取消尚未触发的未来闹钟。若那台手机离线，系统闹钟要等它联网后才会取消，现在不能算手机上已经全部停掉。'
+        : '已撤销该好友的授权。已设闹钟仍保留。')
+      setRevokePersonId('')
+      await reload()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '撤销失败')
+    } finally {
+      setRevokeBusy(false)
+    }
+  }
 
   async function authorize() {
     setError('')
@@ -233,24 +251,36 @@ export default function FriendWake({ store }: { store: AppStore }) {
       </div>
 
       <h4>谁可以给我设闹钟</h4>
-      {given.length === 0 && <p className="muted">还没有授权</p>}
-      {given.map((grant) => (
-        <div key={grant.id}>
-          <strong>{grant.granteeName || grant.granteeUserId}</strong>
-          <span> · {grant.status} · {grant.scope === 'PERMANENT' ? '永久有效，直到你主动撤销' : grant.scope === 'ENTITY_BOUND' ? `仅限「${grant.entityTitle || '事项'}」` : `${grant.validFrom || ''} 至 ${grant.validUntil || ''}`}</span>
-          <div className="row wrap">
-            {grant.status === 'ACTIVE' && <button className="btn ghost" onClick={() => void postJson(`/api/days/remote-alarm/grants/${grant.id}`, 'PATCH', { status: 'PAUSED' }).then(() => reload())}>暂停</button>}
-            {grant.status === 'PAUSED' && <button className="btn ghost" onClick={() => void postJson(`/api/days/remote-alarm/grants/${grant.id}`, 'PATCH', { status: 'ACTIVE' }).then(() => reload())}>恢复</button>}
-            <button className="btn ghost" onClick={() => setRevokeId(grant.id)}>撤销</button>
-          </div>
-          {revokeId === grant.id && (
-            <div className="row wrap">
-              <span>是否同时取消该好友已经为你设置、但尚未触发的未来闹钟？</span>
-              <button className="btn ghost" onClick={() => void postJson(`/api/days/remote-alarm/grants/${grant.id}`, 'DELETE', { cancelFuture: false }).then(() => { setRevokeId(''); return reload() })}>只撤销权限</button>
-              <button className="btn primary" onClick={() => void postJson(`/api/days/remote-alarm/grants/${grant.id}`, 'DELETE', { cancelFuture: true }).then(() => { setRevokeId(''); return reload() })}>撤销并取消闹钟</button>
+      {given.filter((grant) => grant.status !== 'REVOKED').length === 0 && <p className="muted">还没有有效授权</p>}
+      {peopleOf(given.filter((grant) => grant.status !== 'REVOKED')).map((person) => (
+        <div key={person.id}>
+          <strong>{person.name}</strong>
+          {person.grants.map((grant) => (
+            <p key={grant.id}>
+              {grant.status === 'PAUSED' ? '已暂停' : grant.status === 'EXPIRED' ? '已过期' : '有效'}
+              {' · '}
+              {grant.scope === 'PERMANENT' ? '永久有效，直到你主动撤销' : grant.scope === 'ENTITY_BOUND' ? `仅限「${grant.entityTitle || '事项'}」` : `${grant.validFrom || ''} 至 ${grant.validUntil || ''}`}
+              {grant.status === 'ACTIVE' && <button className="btn ghost" type="button" onClick={() => void postJson(`/api/days/remote-alarm/grants/${grant.id}`, 'PATCH', { status: 'PAUSED' }).then(() => reload())}>暂停</button>}
+              {grant.status === 'PAUSED' && <button className="btn ghost" type="button" onClick={() => void postJson(`/api/days/remote-alarm/grants/${grant.id}`, 'PATCH', { status: 'ACTIVE' }).then(() => reload())}>恢复</button>}
+            </p>
+          ))}
+          <button className="btn ghost" type="button" onClick={() => { setError(''); setRevokePersonId(person.id) }}>撤销授权</button>
+          {revokePersonId === person.id && (
+            <div>
+              <p>将撤销「{person.name}」给你设闹钟的全部权限。默认同时取消此人已设、还没响的闹钟。其他好友不受影响。手机如果离线，系统闹钟要等那台手机联网后才会取消。</p>
+              {revokeBusy && <p>正在撤销…</p>}
+              <div className="row wrap">
+                <button className="btn primary" type="button" disabled={revokeBusy} onClick={() => void revokePerson(person.id, true)}>撤销并取消闹钟</button>
+                <button className="btn ghost" type="button" disabled={revokeBusy} onClick={() => void revokePerson(person.id, false)}>仅撤销权限</button>
+                <button className="btn ghost" type="button" disabled={revokeBusy} onClick={() => setRevokePersonId('')}>返回</button>
+              </div>
             </div>
           )}
         </div>
+      ))}
+      {given.some((grant) => grant.status === 'REVOKED') && <h4>已撤销记录</h4>}
+      {given.filter((grant) => grant.status === 'REVOKED').map((grant) => (
+        <p key={grant.id}>{grant.granteeName || '好友'} · 已撤销</p>
       ))}
       {person ? <p>已确认：{person.displayName}</p> : <p className="muted">还没有确认授权对象。</p>}
       <TrustPersonPicker onConfirm={setPerson} />
@@ -303,6 +333,17 @@ export default function FriendWake({ store }: { store: AppStore }) {
       <p className="muted">关闭浏览器后，网页不能替对方注册 Android 系统闹钟。浏览器通知只在这个页面开着时作辅助。</p>
     </div>
   )
+}
+
+function peopleOf(grants: RemoteGrant[]): { id: string; name: string; grants: RemoteGrant[] }[] {
+  const map = new Map<string, { id: string; name: string; grants: RemoteGrant[] }>()
+  for (const grant of grants) {
+    const id = grant.granteeUserId
+    const current = map.get(id) || { id, name: grant.granteeName || '好友', grants: [] }
+    current.grants.push(grant)
+    map.set(id, current)
+  }
+  return [...map.values()]
 }
 
 function DeviceHint({ target }: { target?: RemoteGrant }) {

@@ -18,6 +18,8 @@ import {
   reportAlarm,
   resetPendingRateForTests,
   revokeGrant,
+  revokePerson,
+  listAlarms,
   updateAlarm,
   updateGrant,
   type Actor,
@@ -281,6 +283,49 @@ test('pending 只给出仍可登记的闹钟，回执后不再返回，重复请
 
     await revokeGrant(ctx.config, owner, grant.id, false, NOW)
     assert.equal(await codeOf(() => reportAlarm(ctx.config, owner, first.id, 'DELIVERED', undefined, NOW)), 'REMOTE_ALARM_GRANT_REVOKED')
+  } finally {
+    await ctx.cleanup()
+  }
+})
+
+test('撤销甲的全部授权后乙仍可设闹钟，重复撤销不失败', async () => {
+  const ctx = await config()
+  try {
+    const permanent = await createGrant(ctx.config, owner, { granteeUserId: alice.sub, scope: 'PERMANENT' }, NOW)
+    await createGrant(ctx.config, owner, {
+      granteeUserId: alice.sub,
+      scope: 'TIME_RANGE',
+      validFrom: '2026-10-08T00:00:00.000Z',
+      validUntil: '2026-10-09T00:00:00.000Z',
+    }, NOW)
+    await createGrant(ctx.config, owner, {
+      granteeUserId: alice.sub,
+      scope: 'ENTITY_BOUND',
+      entityType: 'todo',
+      entityId: 'todo_keep',
+      entityTitle: '起床',
+      entityStartsAt: '2026-10-08T04:00:00.000Z',
+      entityEndsAt: '2026-10-08T05:00:00.000Z',
+      leadHours: 20,
+      trailHours: 1,
+    }, NOW)
+    const bobGrant = await createGrant(ctx.config, owner, { granteeUserId: bob.sub, scope: 'PERMANENT' }, NOW)
+    const fromAlice = await createAlarm(ctx.config, alice, alarmBody(permanent.id, owner.sub, 'alice-future'), NOW)
+    const fromBob = await createAlarm(ctx.config, bob, alarmBody(bobGrant.id, owner.sub, 'bob-future', '2026-10-08T06:00:00.000Z'), NOW)
+    const revoked = await revokePerson(ctx.config, owner, alice.sub, true, NOW)
+    assert.equal(revoked.revoked, 3)
+    assert.equal(revoked.cancelled, 1)
+    assert.equal(await codeOf(() => createAlarm(ctx.config, alice, alarmBody(permanent.id, owner.sub, 'alice-again'), NOW)), 'REMOTE_ALARM_GRANT_REVOKED')
+    const again = await revokePerson(ctx.config, owner, alice.sub, true, NOW)
+    assert.equal(again.revoked, 0)
+    assert.equal(again.alreadyRevoked, true)
+    const outsider = await revokePerson(ctx.config, bob, alice.sub, true, NOW)
+    assert.equal(outsider.revoked, 0)
+    const incoming = await listAlarms(ctx.config, owner, 'incoming')
+    assert.equal(incoming.find((alarm) => alarm.id === fromAlice.id)?.status, 'CANCELLED')
+    assert.equal(incoming.find((alarm) => alarm.id === fromBob.id)?.status, 'DELIVERY_PENDING')
+    const still = await createAlarm(ctx.config, bob, alarmBody(bobGrant.id, owner.sub, 'bob-later', '2026-10-08T07:00:00.000Z'), NOW)
+    assert.equal(still.status, 'DELIVERY_PENDING')
   } finally {
     await ctx.cleanup()
   }

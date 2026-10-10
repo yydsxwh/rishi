@@ -13,16 +13,16 @@ export type AppVersionInfo = {
 
 /** 版本以环境变量为准。接口失败时客户端继续使用，不会把所有人锁在外面。 */
 export function androidVersion(config: DaysConfig, env: NodeJS.ProcessEnv = process.env): AppVersionInfo {
-  const code = positive(env.DAYS_ANDROID_VERSION_CODE, 24)
+  const code = positive(env.DAYS_ANDROID_VERSION_CODE, 25)
   const min = positive(env.DAYS_ANDROID_MIN_VERSION_CODE, 0)
   return {
     platform: 'android',
-    latestVersionName: (env.DAYS_ANDROID_VERSION_NAME || '2.6.4').trim(),
+    latestVersionName: (env.DAYS_ANDROID_VERSION_NAME || '2.6.5').trim(),
     latestVersionCode: code,
     minSupportedVersionCode: Math.min(min, code),
     forceUpdate: env.DAYS_ANDROID_FORCE_UPDATE === '1' && min > 0,
     downloadUrl: (env.DAYS_ANDROID_DOWNLOAD_URL || `${config.publicOrigin}/products/days/kemiao-days.apk`).trim(),
-    releaseNotes: (env.DAYS_ANDROID_RELEASE_NOTES || '好友叫醒的日历改为可点选的全屏月历，时、分、秒分开滚动选择。').trim(),
+    releaseNotes: (env.DAYS_ANDROID_RELEASE_NOTES || '可以撤销某个好友的全部叫醒授权，并取消这台手机上尚未响的闹钟。').trim(),
     publishedAt: (env.DAYS_ANDROID_PUBLISHED_AT || '').trim(),
   }
 }

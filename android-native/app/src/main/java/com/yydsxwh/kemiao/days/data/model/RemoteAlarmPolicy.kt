@@ -28,6 +28,8 @@ object RemoteAlarmPolicy {
      * 同步或开机时怎么处理一条本地记录。
      * 过期、取消、已响过的不恢复；触发时间已过的不补响。
      */
+    fun shouldCancelStored(status: String): Boolean = status in OPEN
+
     fun bootAction(status: String, triggerAtMillis: Long, nowMillis: Long): String {
         if (status !in OPEN) return "drop"
         if (triggerAtMillis <= nowMillis) return "missed"

@@ -134,13 +134,29 @@ function requireGrant(db: { grants: RemoteAlarmGrant[] }, id: string, ownerUserI
   return grant
 }
 
-function cancelOpen(db: { alarms: RemoteAlarm[]; audit: AuditEvent[] }, ownerUserId: string, actorUserId: string, grantId: string | undefined, nowIso: string, summary: string): number {
+function cancelOpen(
+  db: { alarms: RemoteAlarm[]; audit: AuditEvent[] },
+  ownerUserId: string,
+  actorUserId: string,
+  grantId: string | undefined,
+  nowIso: string,
+  summary: string,
+  options: { creatorUserId?: string; onlyFuture?: boolean } = {},
+): number {
   let count = 0
+  const nowMs = Date.parse(nowIso)
   for (const alarm of db.alarms) {
     if (alarm.ownerUserId !== ownerUserId) continue
-    if (grantId && alarm.grantId !== grantId) continue
+    const byGrant = grantId != null && alarm.grantId === grantId
+    const byCreator = options.creatorUserId != null && alarm.creatorUserId === options.creatorUserId
+    const selected = options.creatorUserId != null && grantId == null
+      ? byCreator
+      : options.creatorUserId != null
+        ? byGrant || byCreator
+        : grantId == null || byGrant
+    if (!selected) continue
     if (!OPEN_ALARM_STATUSES.includes(alarm.status)) continue
-    if (Date.parse(alarm.triggerAt) <= Date.parse(nowIso)) continue
+    if (options.onlyFuture && Date.parse(alarm.triggerAt) <= nowMs) continue
     alarm.status = 'CANCELLED'
     alarm.updatedAt = nowIso
     alarm.revision += 1
@@ -275,11 +291,38 @@ export async function revokeGrant(config: DaysConfig, actor: Actor, id: string, 
     row.revokedAt = nowIso
     row.updatedAt = nowIso
     audit(db, { action: 'grant.revoked', ownerUserId: actor.sub, actorUserId: actor.sub, grantId: row.id, summary: cancelFuture ? '撤销授权并取消未来闹钟' : '撤销授权，保留已设置闹钟', at: nowIso })
-    if (cancelFuture) cancelOpen(db, actor.sub, actor.sub, row.id, nowIso, '授权撤销，未来闹钟已取消')
+    if (cancelFuture) {
+      cancelOpen(db, actor.sub, actor.sub, row.id, nowIso, '授权撤销，未来闹钟已取消')
+    }
     return row
   })
   if (cancelFuture) void wakeOwnerDevices(config, actor.sub).catch(() => undefined)
   return grant
+}
+
+/** 撤销某个人的全部叫醒授权。重复调用保持已撤销，不会再报错。 */
+export async function revokePerson(config: DaysConfig, actor: Actor, granteeUserId: string, cancelFuture: boolean, now = new Date()) {
+  const person = cleanText(granteeUserId, 84)
+  if (!isAccountSub(person) || person === actor.sub) deny('REMOTE_ALARM_NOT_AUTHORIZED', 400, '请选择另一个账号')
+  const nowIso = now.toISOString()
+  const result = await withAlarmDb(config, (db) => {
+    const rows = db.grants.filter((grant) => grant.ownerUserId === actor.sub && grant.granteeUserId === person)
+    let revoked = 0
+    for (const row of rows) {
+      if (row.status === 'REVOKED') continue
+      row.status = 'REVOKED'
+      row.revokedAt = nowIso
+      row.updatedAt = nowIso
+      revoked += 1
+      audit(db, { action: 'grant.revoked', ownerUserId: actor.sub, actorUserId: actor.sub, grantId: row.id, summary: cancelFuture ? '撤销此人全部授权并取消未来闹钟' : '撤销此人全部授权，保留已设置闹钟', at: nowIso })
+    }
+    const cancelled = cancelFuture
+      ? cancelOpen(db, actor.sub, actor.sub, undefined, nowIso, '撤销此人全部授权，未来闹钟已取消', { creatorUserId: person })
+      : 0
+    return { granteeUserId: person, revoked, cancelled, alreadyRevoked: rows.length > 0 && revoked === 0 }
+  })
+  if (cancelFuture && result.cancelled > 0) void wakeOwnerDevices(config, actor.sub).catch(() => undefined)
+  return result
 }
 
 export async function listGrants(config: DaysConfig, actor: Actor) {
@@ -550,7 +593,7 @@ export async function pauseAll(config: DaysConfig, actor: Actor, cancelFuture: b
     const prefs = prefsOf(db.prefs, actor.sub)
     prefs.pausedAll = true
     db.prefs[actor.sub] = prefs
-    const cancelled = cancelFuture ? cancelOpen(db, actor.sub, actor.sub, undefined, nowIso, '暂停全部好友远程闹钟') : 0
+    const cancelled = cancelFuture ? cancelOpen(db, actor.sub, actor.sub, undefined, nowIso, '暂停全部好友远程闹钟', { onlyFuture: true }) : 0
     audit(db, { action: 'pause_all', ownerUserId: actor.sub, actorUserId: actor.sub, summary: cancelFuture ? '暂停并取消未来闹钟' : '暂停新的远程闹钟', at: nowIso })
     return { prefs, cancelled }
   })

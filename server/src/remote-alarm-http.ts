@@ -20,6 +20,7 @@ import {
   reportAlarm,
   resumeAll,
   revokeGrant,
+  revokePerson,
   saveSettings,
   searchContacts,
   updateAlarm,
@@ -90,6 +91,10 @@ export async function handleRemoteAlarmRoutes(req: IncomingMessage, res: ServerR
     }
     if (section === 'grants' && !id && req.method === 'POST') {
       sendJson(res, 201, { grant: await createGrant(config, actor, body) })
+      return true
+    }
+    if (section === 'grants' && id === 'by-person' && req.method === 'POST') {
+      sendJson(res, 200, await revokePerson(config, actor, String(body.granteeUserId || ''), body.cancelFuture !== false))
       return true
     }
     if (section === 'grants' && id && req.method === 'PATCH') {
