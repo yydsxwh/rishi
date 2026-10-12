@@ -10,6 +10,25 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        var KEY = "yyds.tab.v1";
+        var id = "";
+        try { id = sessionStorage.getItem(KEY) || ""; } catch (e) { id = ""; }
+        if (!/^[A-Za-z0-9_-]{16,80}$/.test(id)) {
+          id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replace(/-/g, "");
+          try { sessionStorage.setItem(KEY, id); } catch (e) {}
+        }
+        var orig = window.fetch;
+        window.fetch = function (input, init) {
+          var headers = new Headers(init && init.headers ? init.headers : undefined);
+          if (!headers.has("x-yyds-tab")) headers.set("x-yyds-tab", id);
+          var next = Object.assign({}, init || {}, { headers: headers });
+          if (typeof Request !== "undefined" && input instanceof Request) return orig.call(this, new Request(input, next));
+          return orig.call(this, input, next);
+        };
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
