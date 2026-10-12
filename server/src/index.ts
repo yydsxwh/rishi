@@ -22,6 +22,7 @@ import { resolveCaller } from './identity'
 import { buildAuthorizeUrl, exchangeAuthorizationCode, OidcError, safeReturnTo, startOidc, verifyIdToken } from './oidc'
 import { assertUploadAllowed, createRishiPlatform } from './platform'
 import { issueSession, OIDC_COOKIE, persistSession, publicUser, readOidcStart, revokeSession, SESSION_COOKIE, sessionFromRequest, signOidcStart } from './session'
+import { DEVICE_COOKIE, holdCookieName, rememberWebAccount, saveOidcAttempt, savePendingLogin, sessionForWebTab, takeOidcAttempt, takePendingLogin } from './tab-device'
 import { migrateLegacyIfNeeded, readRecord, writeRecord } from './sync-store'
 import { upsertUser } from './users'
 import { handleHolidayImport, handleHolidays } from './holidays'
@@ -54,8 +55,10 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, url: URL, 
     native ? config.nativeHandoffUri : defaultAppPath(config),
   )
   const { start, challenge } = startOidc(returnTo, native)
+  const sealed = signOidcStart(start, config)
+  await saveOidcAttempt(config, start.state, sealed)
   redirect(res, buildAuthorizeUrl(config, start, challenge), {
-    'set-cookie': cookieHeader(OIDC_COOKIE, signOidcStart(start, config), {
+    'set-cookie': cookieHeader(OIDC_COOKIE, sealed, {
       maxAge: 10 * 60,
       secure: config.cookieSecure,
       sameSite: 'Lax',
@@ -64,7 +67,9 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, url: URL, 
 }
 
 async function handleCallback(req: IncomingMessage, res: ServerResponse, url: URL, config: DaysConfig) {
-  const started = readOidcStart(readCookies(req)[OIDC_COOKIE], config)
+  const state = url.searchParams.get('state') || ''
+  const sealed = (await takeOidcAttempt(config, state)) || readCookies(req)[OIDC_COOKIE]
+  const started = readOidcStart(sealed, config)
   const clearOidc = clearCookie(OIDC_COOKIE, { secure: config.cookieSecure })
   if (!started) {
     sendJson(res, 400, { error: 'missing_oidc_state' }, { 'set-cookie': clearOidc })
@@ -95,12 +100,24 @@ async function handleCallback(req: IncomingMessage, res: ServerResponse, url: UR
       redirect(res, dest.toString(), { 'set-cookie': clearOidc })
       return
     }
-    res.writeHead(302, {
-      location: started.returnTo || defaultAppPath(config),
+    const pendingId = await savePendingLogin(config, {
+      token: issued.token,
+      session: issued.session,
+      returnTo: started.returnTo || defaultAppPath(config),
+    })
+    const html = `<!doctype html><meta charset="utf-8"><title>登录</title><p>正在进入这个标签页…</p><script>
+      var id="";
+      try{id=sessionStorage.getItem("yyds.tab.v1")||"";}catch(e){}
+      fetch("/api/days/auth/tab-finish",{method:"POST",headers:{"content-type":"application/json","x-yyds-tab":id},body:JSON.stringify({pendingId:${JSON.stringify(pendingId)}})})
+        .then(function(r){return r.json();})
+        .then(function(data){ location.replace(data.returnTo||"/"); });
+    </script>`
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
       'set-cookie': [sessionCookie(config, issued.token), clearOidc],
     })
-    res.end()
+    res.end(html)
   } catch (error) {
     const codeName = error instanceof OidcError ? error.code : 'oidc_failed'
     log('warn', 'oidc callback failed', { code: codeName, reason: error instanceof Error ? error.message : 'error' })
@@ -108,7 +125,56 @@ async function handleCallback(req: IncomingMessage, res: ServerResponse, url: UR
   }
 }
 
+async function handleTabFinish(req: IncomingMessage, res: ServerResponse, config: DaysConfig) {
+  const raw = await readBody(req, 4096)
+  let pendingId = ''
+  try {
+    pendingId = String((JSON.parse(raw.toString('utf8')) as { pendingId?: string }).pendingId || '')
+  } catch {
+    pendingId = ''
+  }
+  const pending = await takePendingLogin(config, pendingId)
+  if (!pending) {
+    sendJson(res, 400, { error: 'pending' })
+    return
+  }
+  const contextId = String(req.headers['x-yyds-tab'] || '')
+  const remembered = await rememberWebAccount(config, {
+    deviceToken: readCookies(req)[DEVICE_COOKIE],
+    session: pending.session,
+    contextId,
+  })
+  const cookies = [
+    cookieHeader(DEVICE_COOKIE, remembered.deviceToken, {
+      maxAge: config.sessionTtlSec,
+      secure: config.cookieSecure,
+      httpOnly: true,
+    }),
+    cookieHeader(holdCookieName(pending.session.sid), pending.token, {
+      maxAge: config.sessionTtlSec,
+      secure: config.cookieSecure,
+      httpOnly: true,
+    }),
+  ]
+  if (remembered.setLegacyCookie) cookies.push(sessionCookie(config, pending.token))
+  res.writeHead(200, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'set-cookie': cookies,
+  })
+  res.end(JSON.stringify({ returnTo: pending.returnTo }))
+}
+
 async function handleSession(req: IncomingMessage, res: ServerResponse, config: DaysConfig) {
+  const tabbed = await sessionForWebTab(req, config)
+  if (tabbed === 'ambiguous') {
+    sendJson(res, 200, { user: null, selectAccount: true })
+    return
+  }
+  if (tabbed) {
+    sendJson(res, 200, { user: publicUser(tabbed) })
+    return
+  }
   const session = sessionFromRequest(req, config)
   if (session) {
     sendJson(res, 200, { user: publicUser(session) })
@@ -125,7 +191,8 @@ async function handleSession(req: IncomingMessage, res: ServerResponse, config: 
 }
 
 async function handleLogout(req: IncomingMessage, res: ServerResponse, url: URL, config: DaysConfig) {
-  const session = sessionFromRequest(req, config)
+  const tabbed = await sessionForWebTab(req, config)
+  const session = tabbed && tabbed !== 'ambiguous' ? tabbed : sessionFromRequest(req, config)
   if (session) await revokeSession(config, session.sid)
   const returnTo = safeReturnTo(url.searchParams.get('returnTo') || url.searchParams.get('next'), defaultAppPath(config))
   redirect(res, returnTo, { 'set-cookie': clearCookie(SESSION_COOKIE, { secure: config.cookieSecure }) })
@@ -407,6 +474,7 @@ export function createDaysServer(config: DaysConfig) {
       }
       if (path === '/api/days/auth/login' && req.method === 'GET') return void (await handleLogin(req, res, url, config))
       if (path === '/api/days/auth/callback' && req.method === 'GET') return void (await handleCallback(req, res, url, config))
+      if (path === '/api/days/auth/tab-finish' && req.method === 'POST') return void (await handleTabFinish(req, res, config))
       if (path === '/api/days/auth/session' && req.method === 'GET') return void (await handleSession(req, res, config))
       if (path === '/api/days/auth/logout' && req.method === 'GET') return void (await handleLogout(req, res, url, config))
       if (path === '/api/days/auth/handoff' && req.method === 'POST') return void (await handleHandoff(req, res, config))

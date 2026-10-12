@@ -27,6 +27,11 @@ export async function fetchSiteUser(signal?: AbortSignal): Promise<SiteUser | nu
   const body = (await response.json()) as { user?: SiteUser | null }
   if (!body.user?.id && !body.user?.sub) return null
   const sub = body.user.sub || body.user.id
+  try {
+    sessionStorage.setItem("yyds.days.sub", sub)
+  } catch {
+    // 隐私模式写不进 sessionStorage 时，本地数据仍留在未分区的键上
+  }
   return {
     id: sub,
     sub,

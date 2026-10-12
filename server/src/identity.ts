@@ -1,7 +1,8 @@
 import type { IncomingMessage } from 'node:http'
 import type { DaysConfig } from './config'
-import { readCookies } from './http'
-import { isSessionRevoked, sessionFromRequest } from './session'
+import { bearerToken, readCookies } from './http'
+import { isSessionRevoked, readSessionToken, sessionFromRequest } from './session'
+import { sessionForWebTab } from './tab-device'
 import { markLegacyChecked, readUser } from './users'
 
 export type Caller = {
@@ -86,7 +87,23 @@ async function legacyIdForRishiSession(
 }
 
 export async function resolveCaller(req: IncomingMessage, config: DaysConfig): Promise<Caller | null> {
-  const session = sessionFromRequest(req, config)
+  const bearer = readSessionToken(bearerToken(req), config)
+  if (bearer) {
+    if (await isSessionRevoked(config, bearer.sid)) return null
+    const legacyId = await legacyIdForRishiSession(config, bearer.sub, req.headers.cookie)
+    return {
+      key: bearer.sub,
+      sub: bearer.sub,
+      name: bearer.name,
+      email: bearer.email,
+      avatarUrl: bearer.avatarUrl,
+      source: 'rishi',
+      legacyId,
+    }
+  }
+  const tabbed = await sessionForWebTab(req, config)
+  if (tabbed === 'ambiguous') return null
+  const session = tabbed || sessionFromRequest(req, config)
   if (session) {
     if (await isSessionRevoked(config, session.sid)) return null
     const legacyId = await legacyIdForRishiSession(config, session.sub, req.headers.cookie)
