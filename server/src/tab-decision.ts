@@ -28,7 +28,7 @@ export function holdCookieName(sessionId: string): string {
 }
 
 /** 缺省、0、false 都关闭。只有 1 或 true 才启用，避免半套升级时串号。 */
-export function multiAccountTabsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function multiAccountTabsEnabled(env: { MULTI_ACCOUNT_TABS?: string } = process.env): boolean {
   const raw = String(env.MULTI_ACCOUNT_TABS ?? "").trim().toLowerCase();
   return raw === "1" || raw === "true";
 }
