@@ -54,7 +54,7 @@ npx --yes tsx src/lib/timetable-import.selftest.ts
 - 产品栏：https://www.yydsxwh.com/products
 - 应用：https://www.yydsxwh.com/products/days/
 
-发布静态包（本机需有 `~/.ssh/yyds_aliyun`，不要把私钥提交进仓库）：
+发布静态包（需要环境变量 `MY_PROD_HOST`、`MY_PROD_PORT`、`MY_PROD_USER`、`MY_PROD_SSH_PRIVATE_KEY`，不要把私钥提交进仓库）：
 
 ```bash
 ./scripts/deploy-days.sh

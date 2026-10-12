@@ -26,7 +26,7 @@ jobs:
         run: npx vite build --base=/products/days/
       - name: Prepare web bundle
         run: tar -czf days-web.tgz -C dist .
-      - name: Upload web to Hong Kong server
+      - name: Upload web to Kuala Lumpur
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
@@ -37,14 +37,18 @@ jobs:
           test -n "$SERVER_HOST"
           test -n "$SERVER_USER"
           test -n "$SERVER_SSH_KEY"
+          if [ "$SERVER_HOST" = "47.242.157.181" ]; then
+            echo "REFUSE: Hong Kong is not the deploy target" >&2
+            exit 1
+          fi
           test -n "$DAYS_WEB_ROOT"
           printf '%s\n' "$SERVER_SSH_KEY" > deploy_key
           chmod 600 deploy_key
           remote_root=$(printf '%q' "$DAYS_WEB_ROOT")
-          ssh -i deploy_key -p "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "mkdir -p $remote_root"
-          scp -i deploy_key -P "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no days-web.tgz "$SERVER_USER@$SERVER_HOST:/tmp/days-web.tgz"
-          ssh -i deploy_key -p "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "set -e; rm -rf /tmp/days-web-release; mkdir -p /tmp/days-web-release; tar -xzf /tmp/days-web.tgz -C /tmp/days-web-release; find $remote_root -mindepth 1 -maxdepth 1 ! -name kemiao-days.apk ! -name 'kemiao-days.apk.*' ! -name kemiao-days-release.json ! -name kemiao-days-windows.exe -exec rm -rf {} +; cp -a /tmp/days-web-release/. $remote_root/; rm -rf /tmp/days-web-release /tmp/days-web.tgz"
-          rm -f deploy_key
+          ssh -i deploy_key -p "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/known_hosts.kl -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=yes -o UpdateHostKeys=no "$SERVER_USER@$SERVER_HOST" "mkdir -p $remote_root"
+          scp -i deploy_key -P "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/known_hosts.kl -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=yes -o UpdateHostKeys=no days-web.tgz "$SERVER_USER@$SERVER_HOST:/tmp/days-web.tgz"
+          ssh -i deploy_key -p "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/known_hosts.kl -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=yes -o UpdateHostKeys=no "$SERVER_USER@$SERVER_HOST" "set -e; rm -rf /tmp/days-web-release; mkdir -p /tmp/days-web-release; tar -xzf /tmp/days-web.tgz -C /tmp/days-web-release; find $remote_root -mindepth 1 -maxdepth 1 ! -name kemiao-days.apk ! -name 'kemiao-days.apk.*' ! -name kemiao-days-release.json ! -name kemiao-days-windows.exe -exec rm -rf {} +; cp -a /tmp/days-web-release/. $remote_root/; rm -rf /tmp/days-web-release /tmp/days-web.tgz"
+          shred -u deploy_key 2>/dev/null || rm -f deploy_key
       - name: Upload web artifact
         uses: actions/upload-artifact@v4
         with:
@@ -76,12 +80,16 @@ jobs:
           test -n "$SERVER_HOST"
           test -n "$SERVER_USER"
           test -n "$SERVER_SSH_KEY"
+          if [ "$SERVER_HOST" = "47.242.157.181" ]; then
+            echo "REFUSE: Hong Kong is not the deploy target" >&2
+            exit 1
+          fi
           printf '%s\n' "$SERVER_SSH_KEY" > deploy_key
           chmod 600 deploy_key
-          scp -i deploy_key -P "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+          scp -i deploy_key -P "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/known_hosts.kl -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=yes -o UpdateHostKeys=no \
             server/dist/index.mjs server/dist/index.cjs server/days-sync/nginx-days-sync.conf \
             "$SERVER_USER@$SERVER_HOST:/tmp/"
-          ssh -i deploy_key -p "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+          ssh -i deploy_key -p "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/known_hosts.kl -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=yes -o UpdateHostKeys=no \
             "$SERVER_USER@$SERVER_HOST" 'set -e
               BFF_DIR=/opt/kemiao-days-sync
               if systemctl cat kemiao-days-sync >/dev/null 2>&1; then
@@ -118,7 +126,7 @@ jobs:
               fi
               curl -fsS -m 5 http://127.0.0.1:3120/api/days/health
             '
-          rm -f deploy_key
+          shred -u deploy_key 2>/dev/null || rm -f deploy_key
 
   desktop-windows:
     runs-on: windows-latest
@@ -153,12 +161,14 @@ jobs:
     needs: desktop-windows
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout pinned host keys
+        uses: actions/checkout@v4
       - name: Download Windows installer
         uses: actions/download-artifact@v4
         with:
           name: days-windows
           path: release
-      - name: Upload Windows installer to Hong Kong server
+      - name: Upload Windows installer to Kuala Lumpur
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
@@ -169,13 +179,17 @@ jobs:
           test -n "$SERVER_HOST"
           test -n "$SERVER_USER"
           test -n "$SERVER_SSH_KEY"
+          if [ "$SERVER_HOST" = "47.242.157.181" ]; then
+            echo "REFUSE: Hong Kong is not the deploy target" >&2
+            exit 1
+          fi
           test -n "$DAYS_WEB_ROOT"
           printf '%s\n' "$SERVER_SSH_KEY" > deploy_key
           chmod 600 deploy_key
           remote_root=$(printf '%q' "$DAYS_WEB_ROOT")
-          ssh -i deploy_key -p "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "mkdir -p $remote_root"
-          scp -i deploy_key -P "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no release/kemiao-days-windows.exe "$SERVER_USER@$SERVER_HOST:$DAYS_WEB_ROOT/kemiao-days-windows.exe"
-          rm -f deploy_key
+          ssh -i deploy_key -p "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/known_hosts.kl -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=yes -o UpdateHostKeys=no "$SERVER_USER@$SERVER_HOST" "mkdir -p $remote_root"
+          scp -i deploy_key -P "${SERVER_PORT:-22}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/known_hosts.kl -o GlobalKnownHostsFile=/dev/null -o CheckHostIP=yes -o UpdateHostKeys=no release/kemiao-days-windows.exe "$SERVER_USER@$SERVER_HOST:$DAYS_WEB_ROOT/kemiao-days-windows.exe"
+          shred -u deploy_key 2>/dev/null || rm -f deploy_key
 
   # 正式 Android 包不走这条流水线。Capacitor debug 曾经覆盖过官网 APK。
   # 正式包只由本机 scripts/deploy-android-native-release.sh 在校验签名后原子替换。
