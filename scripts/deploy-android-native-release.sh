@@ -3,12 +3,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APK="${1:-$ROOT/android-native/app/build/outputs/apk/release/app-release.apk}"
-KEY="${DEPLOY_SSH_KEY_FILE:-$HOME/.ssh/yyds_aliyun}"
-HOST="${DEPLOY_SSH_HOST:-${DEPLOY_HOST:-}}"
-if [[ -z "$HOST" ]]; then
-  echo "缺少 DEPLOY_SSH_HOST 或 DEPLOY_HOST，例如 admin@your-server" >&2
-  exit 1
-fi
+# shellcheck source=load-my-prod.sh
+source "$ROOT/scripts/load-my-prod.sh"
+load_my_prod "$ROOT"
 DEST="${DEPLOY_REMOTE_DIR:-/var/www/yyds-course-platform/public/products/days}"
 SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/tmp/android-sdk}}"
 AAPT="$SDK/build-tools/35.0.0/aapt"
@@ -19,8 +16,8 @@ if [[ "$(basename "$APK")" != "app-release.apk" || "$APK" != *"/android-native/a
   echo "拒绝上传：正式包必须是 android-native/app/build/outputs/apk/release/app-release.apk" >&2
   exit 1
 fi
-if [[ ! -f "$APK" || ! -f "$KEY" ]]; then
-  echo "缺少 APK 或部署密钥文件。" >&2
+if [[ ! -f "$APK" ]]; then
+  echo "缺少正式 APK。" >&2
   exit 1
 fi
 
@@ -58,12 +55,12 @@ echo "local_bytes=$local_size"
 
 remote_tmp="$DEST/kemiao-days.apk.uploading"
 remote_final="$DEST/kemiao-days.apk"
-scp -i "$KEY" -o IdentitiesOnly=yes "$APK" "$HOST:$remote_tmp"
-remote_sha="$(ssh -i "$KEY" -o IdentitiesOnly=yes "$HOST" "sha256sum '$remote_tmp' | awk '{print \$1}' && wc -c < '$remote_tmp'")"
+my_prod_scp "$APK" "$MY_PROD_SSH_TARGET:$remote_tmp"
+remote_sha="$(my_prod_ssh "$MY_PROD_SSH_TARGET" "sha256sum '$remote_tmp' | awk '{print \$1}' && wc -c < '$remote_tmp'")"
 remote_hash="$(echo "$remote_sha" | head -1 | tr -d ' ')"
 remote_size="$(echo "$remote_sha" | tail -1 | tr -d ' ')"
 if [[ "$remote_hash" != "$local_sha" || "$remote_size" != "$local_size" ]]; then
-  ssh -i "$KEY" -o IdentitiesOnly=yes "$HOST" "rm -f '$remote_tmp'"
+  my_prod_ssh "$MY_PROD_SSH_TARGET" "rm -f '$remote_tmp'"
   echo "服务器上的临时文件和本地 APK 不一致，已删除临时文件，正式包未替换。" >&2
   exit 1
 fi
@@ -89,9 +86,9 @@ json.dump({
 }, sys.stdout, ensure_ascii=False)
 print()
 PY
-scp -i "$KEY" -o IdentitiesOnly=yes /tmp/kemiao-days-release.json "$HOST:$DEST/kemiao-days-release.json.uploading"
+my_prod_scp /tmp/kemiao-days-release.json "$MY_PROD_SSH_TARGET:$DEST/kemiao-days-release.json.uploading"
 versioned="$DEST/kemiao-days-${version_name}.apk"
-ssh -i "$KEY" -o IdentitiesOnly=yes "$HOST" "set -e
+my_prod_ssh "$MY_PROD_SSH_TARGET" "set -e
   if [[ -f '$remote_final' ]]; then cp -a '$remote_final' '$remote_final.previous'; fi
   if [[ -f '$versioned' ]]; then
     existing=\$(sha256sum '$versioned' | awk '{print \$1}')

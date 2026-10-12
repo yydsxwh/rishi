@@ -1,27 +1,23 @@
 #!/usr/bin/env bash
 # Publish 日事 BFF (kemiao-days-sync) and nginx exact /api/days/* locations.
-# Uses ~/.ssh/yyds_aliyun. Never commit that key or any env secrets.
+# SSH target comes from MY_PROD_*. Never commit that key or any env secrets.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-KEY="${DEPLOY_SSH_KEY_FILE:-$HOME/.ssh/yyds_aliyun}"
-HOST="${DEPLOY_SSH_HOST:?set DEPLOY_SSH_HOST}"
+# shellcheck source=load-my-prod.sh
+source "$ROOT/scripts/load-my-prod.sh"
+load_my_prod "$ROOT"
 REMOTE_DIR="${DEPLOY_BFF_DIR:?set DEPLOY_BFF_DIR}"
-
-if [[ ! -f "$KEY" ]]; then
-  echo "Missing SSH key at $KEY. Put the deploy key there (chmod 600). Do not paste it into chat." >&2
-  exit 1
-fi
 
 cd "$ROOT"
 npm run build:server
-scp -i "$KEY" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
-  "$ROOT/server/dist/index.mjs" "$HOST:/tmp/kemiao-days-sync.mjs"
-scp -i "$KEY" -o IdentitiesOnly=yes \
-  "$ROOT/server/dist/index.cjs" "$HOST:/tmp/kemiao-days-sync.cjs"
-scp -i "$KEY" -o IdentitiesOnly=yes \
-  "$ROOT/server/days-sync/nginx-days-sync.conf" "$HOST:/tmp/nginx-days-sync.conf"
+my_prod_scp \
+  "$ROOT/server/dist/index.mjs" "$MY_PROD_SSH_TARGET:/tmp/kemiao-days-sync.mjs"
+my_prod_scp \
+  "$ROOT/server/dist/index.cjs" "$MY_PROD_SSH_TARGET:/tmp/kemiao-days-sync.cjs"
+my_prod_scp \
+  "$ROOT/server/days-sync/nginx-days-sync.conf" "$MY_PROD_SSH_TARGET:/tmp/nginx-days-sync.conf"
 
-ssh -i "$KEY" -o IdentitiesOnly=yes "$HOST" "set -e
+my_prod_ssh "$MY_PROD_SSH_TARGET" "set -e
   sudo mkdir -p '$REMOTE_DIR'
   if [[ -f '$REMOTE_DIR/index.mjs' ]]; then sudo cp -a '$REMOTE_DIR/index.mjs' '$REMOTE_DIR/index.mjs.bak'; fi
   if [[ -f '$REMOTE_DIR/index.cjs' ]]; then sudo cp -a '$REMOTE_DIR/index.cjs' '$REMOTE_DIR/index.cjs.bak'; fi
@@ -50,7 +46,7 @@ ssh -i "$KEY" -o IdentitiesOnly=yes "$HOST" "set -e
   fi
 "
 
-echo "Published BFF $HOST:$REMOTE_DIR/index.mjs"
+echo "Published BFF $MY_PROD_SSH_TARGET:$REMOTE_DIR/index.mjs"
 if [[ -n "${RISHI_PUBLIC_ORIGIN:-}" ]]; then
   echo "Health: curl -sS ${RISHI_PUBLIC_ORIGIN%/}/api/days/health"
 fi

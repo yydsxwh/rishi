@@ -118,9 +118,13 @@ Standard scripts are defined in `package.json`:
   `packages/shared/src/software-products.ts` (`kemiao-days` + `actions`).
   `scripts/deploy-days.sh` also uploads `kemiao-days.apk` when a local
   debug APK exists.
-- SSH host comes from `DEPLOY_SSH_HOST` or GitHub secret `SERVER_HOST`.
-  Do not copy a server address into business code. The key file is
-  `~/.ssh/yyds_aliyun` (do not commit it).
+- SSH to Kuala Lumpur uses `MY_PROD_HOST`, `MY_PROD_PORT`, `MY_PROD_USER`,
+  and `MY_PROD_SSH_PRIVATE_KEY` through `infra/deploy/lib/my-prod-ssh.sh`.
+  Do not decide the key is missing just because `~/.ssh/yyds_aliyun`,
+  `SERVER_HOST`, or `DEPLOY_SSH_KEY` is absent. Do not copy a server
+  address or the private key into business code. Host checking stays on
+  and uses the pinned `known_hosts.kl`. Do not connect to the Hong Kong
+  server.
 - Product catalog edits (`software-products.ts`, locales) are on the live
   Andyyyds tree (`YYDS_APP_DIR`). After those source
   changes, `npm run build` then `pm2 restart yyds-course`. Keep a `.next`
