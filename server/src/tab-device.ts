@@ -15,6 +15,7 @@ import {
   holdCookieName,
   isTabContextId,
   planAddAccount,
+  multiAccountTabsEnabled,
   resolveAccess,
   type AccountRecord,
   type BrokerState,
@@ -104,6 +105,7 @@ export async function rememberWebAccount(
 }
 
 export async function sessionForWebTab(req: IncomingMessage, config: DaysConfig): Promise<RishiSession | null | 'ambiguous'> {
+  if (!multiAccountTabsEnabled()) return null
   const cookies = readCookies(req)
   const deviceToken = cookies[DEVICE_COOKIE]
   if (!deviceToken) return null

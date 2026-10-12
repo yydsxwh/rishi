@@ -27,9 +27,10 @@ export function holdCookieName(sessionId: string): string {
   return `${HOLD_COOKIE_PREFIX}${safe}`;
 }
 
-/** 安全开关：仅 MULTI_ACCOUNT_TABS=1 才启用，缺省/0 始终保留旧登录，避免半套升级串号。 */
+/** 缺省、0、false 都关闭。只有 1 或 true 才启用，避免半套升级时串号。 */
 export function multiAccountTabsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.MULTI_ACCOUNT_TABS === "1";
+  const raw = String(env.MULTI_ACCOUNT_TABS ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true";
 }
 
 export function maskEmail(email: string | null | undefined): string {

@@ -22,6 +22,7 @@ import { resolveCaller } from './identity'
 import { buildAuthorizeUrl, exchangeAuthorizationCode, OidcError, safeReturnTo, startOidc, verifyIdToken } from './oidc'
 import { assertUploadAllowed, createRishiPlatform } from './platform'
 import { issueSession, OIDC_COOKIE, persistSession, publicUser, readOidcStart, revokeSession, SESSION_COOKIE, sessionFromRequest, signOidcStart } from './session'
+import { multiAccountTabsEnabled } from './tab-decision'
 import { DEVICE_COOKIE, holdCookieName, rememberWebAccount, saveOidcAttempt, savePendingLogin, sessionForWebTab, takeOidcAttempt, takePendingLogin } from './tab-device'
 import { migrateLegacyIfNeeded, readRecord, writeRecord } from './sync-store'
 import { upsertUser } from './users'
@@ -98,6 +99,15 @@ async function handleCallback(req: IncomingMessage, res: ServerResponse, url: UR
       const dest = new URL(started.returnTo.startsWith('kemiao-days:') ? started.returnTo : config.nativeHandoffUri)
       dest.searchParams.set('handoff', handoff)
       redirect(res, dest.toString(), { 'set-cookie': clearOidc })
+      return
+    }
+    if (!multiAccountTabsEnabled()) {
+      res.writeHead(302, {
+        location: started.returnTo || defaultAppPath(config),
+        'cache-control': 'no-store',
+        'set-cookie': [sessionCookie(config, issued.token), clearOidc],
+      })
+      res.end()
       return
     }
     const pendingId = await savePendingLogin(config, {
