@@ -8,6 +8,7 @@ import { after, test } from 'node:test'
 import { loadConfig } from './config'
 import { resolveCaller } from './identity'
 import { issueSession } from './session'
+import { DEVICE_COOKIE, holdCookieName, rememberWebAccount } from './tab-device'
 import { upsertUser } from './users'
 
 const dirs: string[] = []
@@ -18,8 +19,8 @@ after(async () => {
   await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })))
 })
 
-function request(cookie: string): IncomingMessage {
-  return { headers: { cookie } } as IncomingMessage
+function request(cookie: string, tab = ''): IncomingMessage {
+  return { headers: { cookie, 'x-yyds-tab': tab } } as IncomingMessage
 }
 
 async function tempConfig(extra: Record<string, string>) {
@@ -104,4 +105,30 @@ test('主站确认过旧身份之后，不再为每次请求访问主站', async
   assert.equal(first?.legacyId, 'legacy-1')
   assert.equal(second?.legacyId, 'legacy-1')
   assert.equal(hits, 1)
+})
+
+test('两个标签页各用各的账号，共享 rishi_session 不能换成后登录的人', async () => {
+  const config = await tempConfig({})
+  const alice = issueSession({ sub: 'usr_aliceone1', name: '甲', email: '', avatarUrl: '' }, config)
+  const bob = issueSession({ sub: 'usr_bobtwo222', name: '乙', email: '', avatarUrl: '' }, config)
+  const first = await rememberWebAccount(config, {
+    deviceToken: undefined,
+    session: alice.session,
+    contextId: 'tabcontextaaaaaa01',
+  })
+  const second = await rememberWebAccount(config, {
+    deviceToken: first.deviceToken,
+    session: bob.session,
+    contextId: 'tabcontextbbbbbb02',
+  })
+  assert.equal(second.setLegacyCookie, false)
+  const cookie = [
+    `${DEVICE_COOKIE}=${second.deviceToken}`,
+    `${holdCookieName(alice.session.sid)}=${encodeURIComponent(alice.token)}`,
+    `${holdCookieName(bob.session.sid)}=${encodeURIComponent(bob.token)}`,
+    `rishi_session=${encodeURIComponent(bob.token)}`,
+  ].join('; ')
+  assert.equal((await resolveCaller(request(cookie, 'tabcontextaaaaaa01'), config))?.sub, 'usr_aliceone1')
+  assert.equal((await resolveCaller(request(cookie, 'tabcontextbbbbbb02'), config))?.sub, 'usr_bobtwo222')
+  assert.equal(await resolveCaller(request(cookie, ''), config), null)
 })

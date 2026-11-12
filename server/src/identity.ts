@@ -102,7 +102,7 @@ export async function resolveCaller(req: IncomingMessage, config: DaysConfig): P
     }
   }
   const tabbed = await sessionForWebTab(req, config)
-  if (tabbed === 'ambiguous') return null
+  if (tabbed === 'ambiguous' || tabbed === 'anonymous') return null
   const session = tabbed || sessionFromRequest(req, config)
   if (session) {
     if (await isSessionRevoked(config, session.sid)) return null

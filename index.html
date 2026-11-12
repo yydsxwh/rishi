@@ -19,8 +19,15 @@
           id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replace(/-/g, "");
           try { sessionStorage.setItem(KEY, id); } catch (e) {}
         }
+        function sameOrigin(input) {
+          try {
+            var raw = typeof input === "string" ? input : (input && input.url) || "";
+            return new URL(raw, location.href).origin === location.origin;
+          } catch (e) { return false; }
+        }
         var orig = window.fetch;
         window.fetch = function (input, init) {
+          if (!sameOrigin(input)) return orig.apply(this, arguments);
           var headers = new Headers(init && init.headers ? init.headers : undefined);
           if (!headers.has("x-yyds-tab")) headers.set("x-yyds-tab", id);
           var next = Object.assign({}, init || {}, { headers: headers });

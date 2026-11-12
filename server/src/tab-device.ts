@@ -4,7 +4,7 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { IncomingMessage } from 'node:http'
 import type { DaysConfig } from './config'
@@ -103,7 +103,9 @@ export async function rememberWebAccount(
   return { deviceToken, setLegacyCookie: !device.explicitPick }
 }
 
-export async function sessionForWebTab(req: IncomingMessage, config: DaysConfig): Promise<RishiSession | null | 'ambiguous'> {
+export type WebTabSession = RishiSession | null | 'ambiguous' | 'anonymous'
+
+export async function sessionForWebTab(req: IncomingMessage, config: DaysConfig): Promise<WebTabSession> {
   const cookies = readCookies(req)
   const deviceToken = cookies[DEVICE_COOKIE]
   if (!deviceToken) return null
@@ -112,10 +114,10 @@ export async function sessionForWebTab(req: IncomingMessage, config: DaysConfig)
   const tab = String(req.headers['x-yyds-tab'] || '')
   const decision = resolveAccess(toState(device), { tabHeader: tab || null })
   if (decision.kind === 'ambiguous') return 'ambiguous'
-  if (decision.kind !== 'ready') return null
+  if (decision.kind !== 'ready') return 'anonymous'
   const token = cookies[holdCookieName(decision.account.sessionId)] || (!device.explicitPick ? cookies.rishi_session : '')
   const session = readSessionToken(token, config)
-  if (!session || session.sub !== decision.account.userId) return null
+  if (!session || session.sub !== decision.account.userId) return 'anonymous'
   return session
 }
 
@@ -131,8 +133,9 @@ export async function saveOidcAttempt(config: DaysConfig, state: string, sealed:
 export async function takeOidcAttempt(config: DaysConfig, state: string): Promise<string | null> {
   const path = join(config.dataDir, 'oidc-attempts', `${createHash('sha256').update(state).digest('hex')}.json`)
   try {
-    const body = JSON.parse(await readFile(path, 'utf8')) as { sealed?: string; exp?: number }
-    await writeFile(path, JSON.stringify({ sealed: '', exp: 0 }))
+    await rename(path, `${path}.taken`)
+    const body = JSON.parse(await readFile(`${path}.taken`, 'utf8')) as { sealed?: string; exp?: number }
+    await rm(`${path}.taken`, { force: true })
     if (!body.sealed || (body.exp || 0) < Date.now()) return null
     return body.sealed
   } catch {

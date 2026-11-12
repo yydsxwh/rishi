@@ -115,7 +115,7 @@ async function handleCallback(req: IncomingMessage, res: ServerResponse, url: UR
     res.writeHead(200, {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
-      'set-cookie': [sessionCookie(config, issued.token), clearOidc],
+      'set-cookie': clearOidc,
     })
     res.end(html)
   } catch (error) {
@@ -171,6 +171,10 @@ async function handleSession(req: IncomingMessage, res: ServerResponse, config: 
     sendJson(res, 200, { user: null, selectAccount: true })
     return
   }
+  if (tabbed === 'anonymous') {
+    sendJson(res, 200, { user: null })
+    return
+  }
   if (tabbed) {
     sendJson(res, 200, { user: publicUser(tabbed) })
     return
@@ -192,10 +196,19 @@ async function handleSession(req: IncomingMessage, res: ServerResponse, config: 
 
 async function handleLogout(req: IncomingMessage, res: ServerResponse, url: URL, config: DaysConfig) {
   const tabbed = await sessionForWebTab(req, config)
-  const session = tabbed && tabbed !== 'ambiguous' ? tabbed : sessionFromRequest(req, config)
-  if (session) await revokeSession(config, session.sid)
   const returnTo = safeReturnTo(url.searchParams.get('returnTo') || url.searchParams.get('next'), defaultAppPath(config))
-  redirect(res, returnTo, { 'set-cookie': clearCookie(SESSION_COOKIE, { secure: config.cookieSecure }) })
+  const clearLegacy = clearCookie(SESSION_COOKIE, { secure: config.cookieSecure })
+  if (tabbed === 'ambiguous' || tabbed === 'anonymous') {
+    redirect(res, returnTo, { 'set-cookie': clearLegacy })
+    return
+  }
+  const session = tabbed || sessionFromRequest(req, config)
+  if (session) await revokeSession(config, session.sid)
+  const setCookie = session
+    ? [clearCookie(holdCookieName(session.sid), { secure: config.cookieSecure }), clearLegacy]
+    : clearLegacy
+  res.writeHead(302, { location: returnTo, 'cache-control': 'no-store', 'set-cookie': setCookie })
+  res.end()
 }
 
 async function handleHandoff(req: IncomingMessage, res: ServerResponse, config: DaysConfig) {
